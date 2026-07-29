@@ -2,12 +2,46 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
+const GEMINI_MODEL = 'gemini-flash-latest';
+
+// ─── Shared LLM call: try Claude first, fall back to Gemini if it fails ─────
+async function askLLM({ system, prompt, maxTokens = 2048 }) {
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-opus-4-8',
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    return message.content[0].text;
+  } catch (claudeErr) {
+    console.error('⚠️  Anthropic API failed, falling back to Gemini:', claudeErr.message);
+
+    if (!genAI) {
+      throw new Error(`Anthropic API failed and no GEMINI_API_KEY is configured for fallback: ${claudeErr.message}`);
+    }
+
+    try {
+      const model = genAI.getGenerativeModel({
+        model: GEMINI_MODEL,
+        systemInstruction: system,
+      });
+      const result = await model.generateContent(prompt);
+      return result.response.text();
+    } catch (geminiErr) {
+      console.error('❌ Gemini fallback also failed:', geminiErr.message);
+      throw new Error(`Both Anthropic and Gemini failed. Anthropic: ${claudeErr.message}; Gemini: ${geminiErr.message}`);
+    }
+  }
+}
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -94,16 +128,9 @@ Your job is to summarize the results in a way that directly answers the user's q
 - Keep the response concise but informative
 - Use bullet points or short paragraphs as appropriate`;
 
-// ─── Step 1: Ask Claude to build the API query ────────────────────────────────
+// ─── Step 1: Ask Claude (or Gemini fallback) to build the API query ──────────
 async function buildNIHQuery(userQuery) {
-  const message = await anthropic.messages.create({
-    model: 'claude-opus-4-8',
-    max_tokens: 1024,
-    system: QUERY_BUILDER_SYSTEM,
-    messages: [{ role: 'user', content: userQuery }],
-  });
-
-  const raw = message.content[0].text.trim();
+  const raw = (await askLLM({ system: QUERY_BUILDER_SYSTEM, prompt: userQuery, maxTokens: 1024 })).trim();
   // Strip any accidental markdown code fences
   const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
   return JSON.parse(cleaned);
@@ -131,19 +158,12 @@ async function callNIHReporter(endpoint, payload) {
   }
 }
 
-// ─── Step 3: Ask Claude to summarize results ──────────────────────────────────
+// ─── Step 3: Ask Claude (or Gemini fallback) to summarize results ────────────
 async function summarizeResults(userQuery, nihData, endpoint) {
   const dataStr = JSON.stringify(nihData, null, 2);
   const prompt = `User's question: "${userQuery}"\n\nEndpoint searched: ${endpoint}\n\nNIH RePORTER API results:\n${dataStr}`;
 
-  const message = await anthropic.messages.create({
-    model: 'claude-opus-4-8',
-    max_tokens: 2048,
-    system: SUMMARIZER_SYSTEM,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  return message.content[0].text;
+  return askLLM({ system: SUMMARIZER_SYSTEM, prompt, maxTokens: 2048 });
 }
 
 // ─── Debug: test NIH API with a hardcoded minimal query ──────────────────────
@@ -246,15 +266,10 @@ NIH RePORTER data:
 ${JSON.stringify(nihData, null, 2)}`;
 
   try {
-    const message = await anthropic.messages.create({
-      model: 'claude-opus-4-8',
-      max_tokens: 2048,
-      system,
-      messages: [{ role: 'user', content: prompt }],
-    });
-    res.json({ answer: message.content[0].text });
+    const answer = await askLLM({ system, prompt, maxTokens: 2048 });
+    res.json({ answer });
   } catch (e) {
-    res.status(500).json({ error: 'Claude follow-up failed.', details: e.message });
+    res.status(500).json({ error: 'Follow-up failed.', details: e.message });
   }
 });
 
