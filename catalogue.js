@@ -1,22 +1,20 @@
-const { db, getSettingValue } = require('./db');
+const { sql, ensureInitialized, getSettingValue } = require('./db');
 const { embedText, cosineSimilarity } = require('./embeddings');
-
-const selectMissingEmbeddings = db.prepare(
-  'SELECT id, question FROM catalogue WHERE embedding IS NULL OR embedding = ?'
-);
-const updateEmbedding = db.prepare('UPDATE catalogue SET embedding = ? WHERE id = ?');
-const selectAllWithEmbeddings = db.prepare(
-  'SELECT id, category, category_name, question, output_fields, answer_contract, embedding FROM catalogue WHERE embedding IS NOT NULL'
-);
 
 // Compute and store embeddings for any catalogue rows that don't have one yet
 // (new seed rows, or rows added/edited via the admin panel).
 async function ensureEmbeddings() {
-  const missing = selectMissingEmbeddings.all('');
+  await ensureInitialized();
+
+  const { rows: missing } = await sql`
+    SELECT id, question FROM catalogue WHERE embedding IS NULL
+  `;
+
   for (const row of missing) {
     const vector = await embedText(row.question);
-    updateEmbedding.run(JSON.stringify(vector), row.id);
+    await sql`UPDATE catalogue SET embedding = ${JSON.stringify(vector)} WHERE id = ${row.id}`;
   }
+
   return missing.length;
 }
 
@@ -25,11 +23,14 @@ async function ensureEmbeddings() {
 async function matchQuery(userQuery) {
   await ensureEmbeddings();
 
-  const rows = selectAllWithEmbeddings.all();
+  const { rows } = await sql`
+    SELECT id, category, category_name, question, output_fields, answer_contract, embedding
+    FROM catalogue WHERE embedding IS NOT NULL
+  `;
   if (rows.length === 0) return null;
 
   const queryVector = await embedText(userQuery);
-  const threshold = parseFloat(getSettingValue('similarity_threshold', '0.75'));
+  const threshold = parseFloat(await getSettingValue('similarity_threshold', '0.75'));
 
   let best = null;
   let bestScore = -Infinity;

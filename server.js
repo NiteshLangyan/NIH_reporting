@@ -7,7 +7,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const path = require('path');
 
-const { db, getSettingValue, setSettingValue } = require('./db');
+const { sql, ensureInitialized, getSettingValue, setSettingValue } = require('./db');
 const { matchQuery } = require('./catalogue');
 const adminRouter = require('./admin-routes');
 
@@ -15,29 +15,39 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const GEMINI_MODEL = 'gemini-flash-latest';
 
-// One-time migration: if SQLite has no key yet but .env does, seed it in.
-// After this, the admin panel (backed by SQLite) is the source of truth.
-if (!getSettingValue('anthropic_api_key') && process.env.ANTHROPIC_API_KEY) {
-  setSettingValue('anthropic_api_key', process.env.ANTHROPIC_API_KEY);
-}
-if (!getSettingValue('gemini_api_key') && process.env.GEMINI_API_KEY) {
-  setSettingValue('gemini_api_key', process.env.GEMINI_API_KEY);
+// One-time migration: if the DB has no key yet but .env does, seed it in.
+// After this, the admin panel (backed by Postgres) is the source of truth.
+// Runs lazily (not at module load) since it needs the DB connection ready.
+let migrationDone = false;
+async function ensureEnvKeysMigrated() {
+  if (migrationDone) return;
+  migrationDone = true;
+
+  await ensureInitialized();
+  if (!(await getSettingValue('anthropic_api_key')) && process.env.ANTHROPIC_API_KEY) {
+    await setSettingValue('anthropic_api_key', process.env.ANTHROPIC_API_KEY);
+  }
+  if (!(await getSettingValue('gemini_api_key')) && process.env.GEMINI_API_KEY) {
+    await setSettingValue('gemini_api_key', process.env.GEMINI_API_KEY);
+  }
 }
 
-function getAnthropicClient() {
-  const apiKey = getSettingValue('anthropic_api_key');
+async function getAnthropicClient() {
+  await ensureEnvKeysMigrated();
+  const apiKey = await getSettingValue('anthropic_api_key');
   return new Anthropic({ apiKey: apiKey || undefined });
 }
 
-function getGeminiClient() {
-  const apiKey = getSettingValue('gemini_api_key');
+async function getGeminiClient() {
+  await ensureEnvKeysMigrated();
+  const apiKey = await getSettingValue('gemini_api_key');
   return apiKey ? new GoogleGenerativeAI(apiKey) : null;
 }
 
 // ─── Shared LLM call: try Claude first, fall back to Gemini if it fails ─────
 async function askLLM({ system, prompt, maxTokens = 2048 }) {
   try {
-    const anthropic = getAnthropicClient();
+    const anthropic = await getAnthropicClient();
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-8',
       max_tokens: maxTokens,
@@ -48,7 +58,7 @@ async function askLLM({ system, prompt, maxTokens = 2048 }) {
   } catch (claudeErr) {
     console.error('⚠️  Anthropic API failed, falling back to Gemini:', claudeErr.message);
 
-    const genAI = getGeminiClient();
+    const genAI = await getGeminiClient();
     if (!genAI) {
       throw new Error(`Anthropic API failed and no Gemini API key is configured for fallback: ${claudeErr.message}`);
     }
@@ -89,9 +99,13 @@ app.use((req, res, next) => {
 app.use('/admin/api', adminRouter);
 app.use(express.static(path.join(__dirname, 'public')));
 
-const logSearch = db.prepare(
-  'INSERT INTO search_log (session_id, query, matched_catalogue_id, similarity) VALUES (?, ?, ?, ?)'
-);
+async function logSearch(sessionId, query, matchedCatalogueId, similarity) {
+  await ensureInitialized();
+  await sql`
+    INSERT INTO search_log (session_id, query, matched_catalogue_id, similarity)
+    VALUES (${sessionId}, ${query}, ${matchedCatalogueId}, ${similarity})
+  `;
+}
 
 // ─── NIH Reporter API endpoints (clinical studies is v1 only) ────────────────
 const NIH_ENDPOINTS = {
@@ -318,7 +332,11 @@ app.post('/api/search', async (req, res) => {
       console.error('⚠️  Catalogue matching failed (continuing without it):', e.message);
     }
 
-    logSearch.run(req.sessionId, query, catalogueMatch?.id ?? null, catalogueMatch?.similarity ?? null);
+    try {
+      await logSearch(req.sessionId, query, catalogueMatch?.id ?? null, catalogueMatch?.similarity ?? null);
+    } catch (e) {
+      console.error('⚠️  Failed to log search (continuing):', e.message);
+    }
 
     // Step 3: Claude summarizes (using the catalogue's required format, if matched)
     const summary = await summarizeResults(query, nihData, endpoint, catalogueMatch);

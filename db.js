@@ -1,101 +1,126 @@
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcrypt');
-const Database = require('better-sqlite3');
+const { sql } = require('@vercel/postgres');
 
-const DB_PATH = path.join(__dirname, 'data.db');
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
+// Serverless functions cold-start repeatedly, so initialization must be cheap,
+// idempotent, and safe to run concurrently. This promise is memoized per
+// warm instance so we don't re-run DDL/seeding on every request.
+let initPromise = null;
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-  );
+async function ensureInitialized() {
+  if (!initPromise) initPromise = initialize();
+  return initPromise;
+}
 
-  CREATE TABLE IF NOT EXISTS catalogue (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    category TEXT NOT NULL,
-    category_name TEXT NOT NULL,
-    question TEXT NOT NULL,
-    output_fields TEXT NOT NULL,
-    answer_contract TEXT NOT NULL,
-    embedding TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
+async function initialize() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )
+  `;
 
-  CREATE TABLE IF NOT EXISTS search_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id TEXT NOT NULL,
-    query TEXT NOT NULL,
-    matched_catalogue_id INTEGER,
-    similarity REAL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (matched_catalogue_id) REFERENCES catalogue(id)
-  );
+  await sql`
+    CREATE TABLE IF NOT EXISTS catalogue (
+      id SERIAL PRIMARY KEY,
+      category TEXT NOT NULL,
+      category_name TEXT NOT NULL,
+      question TEXT NOT NULL,
+      output_fields TEXT NOT NULL,
+      answer_contract TEXT NOT NULL,
+      embedding TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
 
-  CREATE INDEX IF NOT EXISTS idx_search_log_session ON search_log(session_id);
-`);
+  await sql`
+    CREATE TABLE IF NOT EXISTS search_log (
+      id SERIAL PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      query TEXT NOT NULL,
+      matched_catalogue_id INTEGER REFERENCES catalogue(id),
+      similarity REAL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
 
-const DEFAULTS = {
-  similarity_threshold: '0.75',
-  admin_username: 'admin',
-  // Default password "admin123" - change immediately after first login.
-  admin_password_hash: bcrypt.hashSync('admin123', 10),
-  anthropic_api_key: '',
-  gemini_api_key: '',
-};
+  await sql`CREATE INDEX IF NOT EXISTS idx_search_log_session ON search_log(session_id)`;
 
-const getSetting = db.prepare('SELECT value FROM settings WHERE key = ?');
-const setSetting = db.prepare(
-  'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
-);
+  // Admin sessions live in the DB, not in server memory — a serverless
+  // function has no guaranteed single warm instance, so an in-memory
+  // session store would randomly reject valid logins on a cold instance.
+  await sql`
+    CREATE TABLE IF NOT EXISTS admin_sessions (
+      token TEXT PRIMARY KEY,
+      expires_at TIMESTAMPTZ NOT NULL
+    )
+  `;
 
-for (const [key, value] of Object.entries(DEFAULTS)) {
-  const existing = getSetting.get(key);
-  if (!existing) setSetting.run(key, value);
+  await seedDefaultSettings();
+  await seedCatalogueIfEmpty();
+}
+
+async function seedDefaultSettings() {
+  const defaults = {
+    similarity_threshold: '0.75',
+    admin_username: 'admin',
+    // Default password "admin123" - change immediately after first login.
+    admin_password_hash: bcrypt.hashSync('admin123', 10),
+    anthropic_api_key: '',
+    gemini_api_key: '',
+  };
+
+  for (const [key, value] of Object.entries(defaults)) {
+    await sql`
+      INSERT INTO settings (key, value) VALUES (${key}, ${value})
+      ON CONFLICT (key) DO NOTHING
+    `;
+  }
 }
 
 // Seed the catalogue from catalogue.seed.json on first run only (table empty).
-function seedCatalogueIfEmpty() {
-  const { count } = db.prepare('SELECT COUNT(*) AS count FROM catalogue').get();
-  if (count > 0) return;
+async function seedCatalogueIfEmpty() {
+  const { rows } = await sql`SELECT COUNT(*)::int AS count FROM catalogue`;
+  if (rows[0].count > 0) return;
 
   const seedPath = path.join(__dirname, 'catalogue.seed.json');
   if (!fs.existsSync(seedPath)) return;
 
   const seed = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
-  const insert = db.prepare(`
-    INSERT INTO catalogue (category, category_name, question, output_fields, answer_contract)
-    VALUES (?, ?, ?, ?, ?)
-  `);
+  let inserted = 0;
 
-  const insertMany = db.transaction((categories) => {
-    for (const cat of categories) {
-      for (const q of cat.questions) {
-        insert.run(cat.category, cat.categoryName, q.question, q.outputFields, cat.answerContract);
-      }
+  for (const cat of seed) {
+    for (const q of cat.questions) {
+      await sql`
+        INSERT INTO catalogue (category, category_name, question, output_fields, answer_contract)
+        VALUES (${cat.category}, ${cat.categoryName}, ${q.question}, ${q.outputFields}, ${cat.answerContract})
+      `;
+      inserted++;
     }
-  });
+  }
 
-  insertMany(seed);
-  console.log(`Seeded catalogue with ${seed.reduce((n, c) => n + c.questions.length, 0)} questions.`);
+  console.log(`Seeded catalogue with ${inserted} questions.`);
 }
 
-seedCatalogueIfEmpty();
-
-function getSettingValue(key, fallback = null) {
-  const row = getSetting.get(key);
-  return row ? row.value : fallback;
+async function getSettingValue(key, fallback = null) {
+  await ensureInitialized();
+  const { rows } = await sql`SELECT value FROM settings WHERE key = ${key}`;
+  return rows.length > 0 ? rows[0].value : fallback;
 }
 
-function setSettingValue(key, value) {
-  setSetting.run(key, value);
+async function setSettingValue(key, value) {
+  await ensureInitialized();
+  await sql`
+    INSERT INTO settings (key, value) VALUES (${key}, ${value})
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value
+  `;
 }
 
 module.exports = {
-  db,
+  sql,
+  ensureInitialized,
   getSettingValue,
   setSettingValue,
 };

@@ -1,36 +1,39 @@
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
-const { getSettingValue, setSettingValue } = require('./db');
+const { sql, ensureInitialized, getSettingValue, setSettingValue } = require('./db');
 
-// In-memory admin session store: token -> expiry timestamp.
-// Sessions reset on server restart, which is acceptable for a single-admin internal tool.
-const adminSessions = new Map();
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
-function createAdminSession() {
+async function createAdminSession() {
+  await ensureInitialized();
   const token = crypto.randomBytes(32).toString('hex');
-  adminSessions.set(token, Date.now() + SESSION_TTL_MS);
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  await sql`INSERT INTO admin_sessions (token, expires_at) VALUES (${token}, ${expiresAt.toISOString()})`;
   return token;
 }
 
-function isValidAdminSession(token) {
+async function isValidAdminSession(token) {
   if (!token) return false;
-  const expiry = adminSessions.get(token);
-  if (!expiry) return false;
-  if (Date.now() > expiry) {
-    adminSessions.delete(token);
+  await ensureInitialized();
+
+  const { rows } = await sql`SELECT expires_at FROM admin_sessions WHERE token = ${token}`;
+  if (rows.length === 0) return false;
+
+  if (new Date(rows[0].expires_at).getTime() < Date.now()) {
+    await sql`DELETE FROM admin_sessions WHERE token = ${token}`;
     return false;
   }
   return true;
 }
 
-function destroyAdminSession(token) {
-  adminSessions.delete(token);
+async function destroyAdminSession(token) {
+  await ensureInitialized();
+  await sql`DELETE FROM admin_sessions WHERE token = ${token}`;
 }
 
 async function verifyAdminCredentials(username, password) {
-  const storedUsername = getSettingValue('admin_username');
-  const storedHash = getSettingValue('admin_password_hash');
+  const storedUsername = await getSettingValue('admin_username');
+  const storedHash = await getSettingValue('admin_password_hash');
   if (!storedUsername || !storedHash) return false;
   if (username !== storedUsername) return false;
   return bcrypt.compare(password, storedHash);
@@ -38,12 +41,13 @@ async function verifyAdminCredentials(username, password) {
 
 async function updateAdminPassword(newPassword) {
   const hash = await bcrypt.hash(newPassword, 10);
-  setSettingValue('admin_password_hash', hash);
+  await setSettingValue('admin_password_hash', hash);
 }
 
-function requireAdmin(req, res, next) {
+async function requireAdmin(req, res, next) {
   const token = req.cookies && req.cookies.admin_session;
-  if (!isValidAdminSession(token)) {
+  const valid = await isValidAdminSession(token);
+  if (!valid) {
     return res.status(401).json({ error: 'Not authenticated.' });
   }
   next();
