@@ -1,20 +1,43 @@
 require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
+const cookieParser = require('cookie-parser');
+const { randomUUID } = require('crypto');
 const Anthropic = require('@anthropic-ai/sdk');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const path = require('path');
 
+const { db, getSettingValue, setSettingValue } = require('./db');
+const { matchQuery } = require('./catalogue');
+const adminRouter = require('./admin-routes');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const GEMINI_MODEL = 'gemini-flash-latest';
+
+// One-time migration: if SQLite has no key yet but .env does, seed it in.
+// After this, the admin panel (backed by SQLite) is the source of truth.
+if (!getSettingValue('anthropic_api_key') && process.env.ANTHROPIC_API_KEY) {
+  setSettingValue('anthropic_api_key', process.env.ANTHROPIC_API_KEY);
+}
+if (!getSettingValue('gemini_api_key') && process.env.GEMINI_API_KEY) {
+  setSettingValue('gemini_api_key', process.env.GEMINI_API_KEY);
+}
+
+function getAnthropicClient() {
+  const apiKey = getSettingValue('anthropic_api_key');
+  return new Anthropic({ apiKey: apiKey || undefined });
+}
+
+function getGeminiClient() {
+  const apiKey = getSettingValue('gemini_api_key');
+  return apiKey ? new GoogleGenerativeAI(apiKey) : null;
+}
 
 // ─── Shared LLM call: try Claude first, fall back to Gemini if it fails ─────
 async function askLLM({ system, prompt, maxTokens = 2048 }) {
   try {
+    const anthropic = getAnthropicClient();
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-8',
       max_tokens: maxTokens,
@@ -25,8 +48,9 @@ async function askLLM({ system, prompt, maxTokens = 2048 }) {
   } catch (claudeErr) {
     console.error('⚠️  Anthropic API failed, falling back to Gemini:', claudeErr.message);
 
+    const genAI = getGeminiClient();
     if (!genAI) {
-      throw new Error(`Anthropic API failed and no GEMINI_API_KEY is configured for fallback: ${claudeErr.message}`);
+      throw new Error(`Anthropic API failed and no Gemini API key is configured for fallback: ${claudeErr.message}`);
     }
 
     try {
@@ -44,7 +68,30 @@ async function askLLM({ system, prompt, maxTokens = 2048 }) {
 }
 
 app.use(express.json());
+app.use(cookieParser());
+
+// ─── Anonymous session tracking (for search-log analytics, no login required) ─
+const SESSION_COOKIE = 'nih_session_id';
+app.use((req, res, next) => {
+  let sessionId = req.cookies[SESSION_COOKIE];
+  if (!sessionId) {
+    sessionId = randomUUID();
+    res.cookie(SESSION_COOKIE, sessionId, {
+      httpOnly: true,
+      maxAge: 365 * 24 * 60 * 60 * 1000,
+      sameSite: 'lax',
+    });
+  }
+  req.sessionId = sessionId;
+  next();
+});
+
+app.use('/admin/api', adminRouter);
 app.use(express.static(path.join(__dirname, 'public')));
+
+const logSearch = db.prepare(
+  'INSERT INTO search_log (session_id, query, matched_catalogue_id, similarity) VALUES (?, ?, ?, ?)'
+);
 
 // ─── NIH Reporter API endpoints (clinical studies is v1 only) ────────────────
 const NIH_ENDPOINTS = {
@@ -54,8 +101,17 @@ const NIH_ENDPOINTS = {
 };
 
 // ─── System prompt for Step 1: interpret user query → structured API call ────
-const QUERY_BUILDER_SYSTEM = `You are an expert at the NIH RePORTER API v2.
+// Field names verified directly against api.reporter.nih.gov (V2) — "search_id"
+// and "is_active" are NOT real filter fields (search_id retrieves a prior
+// saved search by ID; an unrecognized "is_active" is silently ignored), so
+// using either one causes NIH to return its *entire unfiltered database*
+// instead of a filtered result.
+function buildQueryBuilderSystem() {
+  const today = new Date().toISOString().slice(0, 10);
+  return `You are an expert at the NIH RePORTER API v2.
 Your job is to convert a user's natural language request into a valid JSON API call for NIH RePORTER.
+
+Today's date is ${today}. Compute any relative time window ("past 30 days", "this quarter", "within six months", "expiring next year") into concrete "from_date"/"to_date" values (YYYY-MM-DD) based on this date. Never omit the date filter just because the window is relative — resolve it yourself.
 
 The NIH RePORTER API has three main search endpoints:
 1. POST /v2/projects/search   — funded research projects
@@ -69,18 +125,27 @@ You must return a JSON object with exactly two keys:
 === PROJECTS /v2/projects/search payload structure ===
 {
   "criteria": {
-    "search_id": "text search string",           // free-text keyword search
-    "fiscal_years": [2022, 2023, 2024],          // filter by fiscal year(s)
-    "org_names": ["Harvard University"],          // filter by organization
+    "advanced_text_search": {                      // free-text keyword search — use this, NOT "search_id"
+      "operator": "and",                           // "and" | "or" | "advanced"
+      "search_field": "all",                       // "all", or comma-separated: "projecttitle,terms,abstracttext"
+      "search_text": "medicinal chemistry lead optimization"
+    },
+    "fiscal_years": [2022, 2023, 2024],             // filter by fiscal year(s)
+    "org_names": ["Harvard University"],            // filter by organization
     "pi_names": [{"first_name":"John","last_name":"Smith"}], // filter by PI
-    "activity_codes": ["R01","R21"],              // NIH activity codes
-    "award_types": ["1","2"],                     // award type codes
-    "org_states": ["CA","NY"],                    // US state abbreviations
-    "agencies": ["NCI","NIMH"],                   // NIH institutes/agencies
-    "is_active": true                             // only active projects
+    "activity_codes": ["R01","R21"],                // NIH activity codes
+    "award_types": ["1","2"],                       // award type codes
+    "org_states": ["CA","NY"],                      // US state abbreviations
+    "agencies": ["NCI","NIMH"],                     // NIH institutes/agencies
+    "include_active_projects": true,                // only currently active projects — NOT "is_active"
+    "project_start_date": {"from_date":"2026-01-01","to_date":"2026-06-30"}, // project start window
+    "project_end_date": {"from_date":"2026-01-01","to_date":"2026-06-30"},   // project/budget-period end window — use for "expiring", "ending within X months", "renewal due" questions
+    "award_notice_date": {"from_date":"2026-01-01","to_date":"2026-06-30"}   // use for "new awards in the past N days/weeks/months"
   },
   "offset": 0,
-  "limit": 10
+  "limit": 10,
+  "sort_field": "project_start_date",              // e.g. project_start_date, award_amount, project_end_date
+  "sort_order": "desc"
 }
 
 === PUBLICATIONS /v2/publications/search payload structure ===
@@ -89,8 +154,7 @@ You must return a JSON object with exactly two keys:
     "pmids": [12345678],                          // PubMed IDs
     "fiscal_years": [2022, 2023],
     "pi_names": [{"first_name":"Jane","last_name":"Doe"}],
-    "org_names": ["MIT"],
-    "search_id": "keyword search"
+    "org_names": ["MIT"]
   },
   "offset": 0,
   "limit": 10
@@ -99,7 +163,6 @@ You must return a JSON object with exactly two keys:
 === CLINICAL STUDIES /v2/clinicalstudies/search payload structure ===
 {
   "criteria": {
-    "search_id": "keyword search",
     "fiscal_years": [2022, 2023],
     "org_names": ["Stanford University"]
   },
@@ -108,10 +171,13 @@ You must return a JSON object with exactly two keys:
 }
 
 Rules:
-- Only include criteria fields that the user actually asked about. Do NOT add fields with null or empty values.
+- Only include criteria fields that the user actually asked about or that are needed to resolve a time window they implied. Do NOT add fields with null or empty values.
 - Default limit to 10 unless user specifies.
-- For keyword searches use "search_id".
+- For keyword/topic searches use "advanced_text_search" — never "search_id" (that field retrieves a previously saved search by ID, not a new keyword search).
+- For "only active/ongoing/current projects" use "include_active_projects": true — never "is_active" (not a real field; NIH silently ignores it and returns unfiltered results).
+- For any date-bounded phrase ("past 30 days", "within N months", "this quarter", "expiring soon", "recently funded"), compute concrete from_date/to_date values from today's date and apply them to the most relevant date field (award_notice_date for new awards, project_end_date for expirations/renewals, project_start_date for start-date windows).
 - Return ONLY valid JSON with no explanation, no markdown, no code blocks. Just raw JSON.`;
+}
 
 // ─── System prompt for Step 2: summarize API results in plain language ────────
 const SUMMARIZER_SYSTEM = `You are a helpful research assistant that explains NIH RePORTER data in clear, friendly language.
@@ -130,7 +196,7 @@ Your job is to summarize the results in a way that directly answers the user's q
 
 // ─── Step 1: Ask Claude (or Gemini fallback) to build the API query ──────────
 async function buildNIHQuery(userQuery) {
-  const raw = (await askLLM({ system: QUERY_BUILDER_SYSTEM, prompt: userQuery, maxTokens: 1024 })).trim();
+  const raw = (await askLLM({ system: buildQueryBuilderSystem(), prompt: userQuery, maxTokens: 1024 })).trim();
   // Strip any accidental markdown code fences
   const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
   return JSON.parse(cleaned);
@@ -159,17 +225,32 @@ async function callNIHReporter(endpoint, payload) {
 }
 
 // ─── Step 3: Ask Claude (or Gemini fallback) to summarize results ────────────
-async function summarizeResults(userQuery, nihData, endpoint) {
+// When `catalogueMatch` is provided, the question matched one of the governed
+// catalogue entries (Appendix A) closely enough — the summarizer is told to
+// answer using exactly that entry's required output fields and answer contract.
+async function summarizeResults(userQuery, nihData, endpoint, catalogueMatch) {
   const dataStr = JSON.stringify(nihData, null, 2);
-  const prompt = `User's question: "${userQuery}"\n\nEndpoint searched: ${endpoint}\n\nNIH RePORTER API results:\n${dataStr}`;
+  let prompt = `User's question: "${userQuery}"\n\nEndpoint searched: ${endpoint}\n\nNIH RePORTER API results:\n${dataStr}`;
+  let system = SUMMARIZER_SYSTEM;
 
-  return askLLM({ system: SUMMARIZER_SYSTEM, prompt, maxTokens: 2048 });
+  if (catalogueMatch) {
+    system = `${SUMMARIZER_SYSTEM}
+
+This question matches a governed catalogue question ("${catalogueMatch.question}", category ${catalogueMatch.category} - ${catalogueMatch.categoryName}). Answer using exactly these required output fields, in a structured table/list format, in addition to your narrative summary:
+
+Required output fields: ${catalogueMatch.outputFields}
+
+Answer contract:
+${catalogueMatch.answerContract}`;
+  }
+
+  return askLLM({ system, prompt, maxTokens: 2048 });
 }
 
 // ─── Debug: test NIH API with a hardcoded minimal query ──────────────────────
 app.get('/api/test', async (req, res) => {
   const url = NIH_ENDPOINTS['projects'];
-  const payload = { criteria: { search_id: 'cancer' }, offset: 0, limit: 3 };
+  const payload = { criteria: { advanced_text_search: { operator: 'and', search_field: 'all', search_text: 'cancer' } }, offset: 0, limit: 3 };
   console.log('\n🧪 Test route: calling NIH API directly...');
   try {
     const response = await axios.post(url, payload, {
@@ -229,8 +310,18 @@ app.post('/api/search', async (req, res) => {
       });
     }
 
-    // Step 3: Claude summarizes
-    const summary = await summarizeResults(query, nihData, endpoint);
+    // Check whether this question matches a governed catalogue question (Appendix A)
+    let catalogueMatch = null;
+    try {
+      catalogueMatch = await matchQuery(query);
+    } catch (e) {
+      console.error('⚠️  Catalogue matching failed (continuing without it):', e.message);
+    }
+
+    logSearch.run(req.sessionId, query, catalogueMatch?.id ?? null, catalogueMatch?.similarity ?? null);
+
+    // Step 3: Claude summarizes (using the catalogue's required format, if matched)
+    const summary = await summarizeResults(query, nihData, endpoint, catalogueMatch);
 
     res.json({
       summary,
@@ -238,6 +329,9 @@ app.post('/api/search', async (req, res) => {
       query_sent: payload,
       total_count: nihData.meta?.total ?? nihData.total ?? null,
       raw_results: nihData,
+      catalogue_match: catalogueMatch
+        ? { category: catalogueMatch.category, categoryName: catalogueMatch.categoryName, question: catalogueMatch.question, similarity: catalogueMatch.similarity }
+        : null,
     });
 
   } catch (err) {

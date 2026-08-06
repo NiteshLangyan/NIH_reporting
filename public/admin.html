@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NIH RePORTER AI - Admin</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --nih-blue: #0e5f99;
+      --nih-dark: #084a7a;
+      --nih-light: #e8f2fb;
+      --green: #1a7a4a;
+      --green-bg: #e6f7ef;
+      --red: #b91c1c;
+      --red-bg: #fdecec;
+      --text: #1a1a2e;
+      --muted: #6b7280;
+      --border: #e2e8f0;
+      --bg: #f0f4f8;
+      --card: #ffffff;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 15px;
+    }
+
+    header {
+      background: linear-gradient(135deg, #0a4a78 0%, #0e5f99 60%, #1a7bc4 100%);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+    }
+    header h1 { color: #fff; font-size: 1.2rem; }
+    header p { color: #a8d4f0; font-size: 0.8rem; }
+    #logoutBtn {
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    #logoutBtn:hover { background: rgba(255,255,255,0.25); }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+      margin-bottom: 22px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .card h2 { font-size: 1.05rem; margin-bottom: 4px; }
+    .card .sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 16px; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    label { display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px; color: var(--muted); }
+    input, textarea {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-family: inherit;
+    }
+    textarea { resize: vertical; min-height: 60px; }
+    .field { margin-bottom: 14px; }
+    .hint { color: var(--muted); font-size: 0.78rem; margin-top: 4px; }
+
+    button.primary {
+      background: var(--nih-blue);
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    button.primary:hover { background: var(--nih-dark); }
+    button.danger {
+      background: var(--red-bg);
+      color: var(--red);
+      border: 1px solid #f3c6c6;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    button.secondary {
+      background: #fff;
+      color: var(--nih-blue);
+      border: 1px solid var(--nih-blue);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; }
+    tr:hover td { background: var(--nih-light); }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 100px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      background: var(--green-bg);
+      color: var(--green);
+    }
+
+    .stat-row { display: flex; gap: 24px; margin-bottom: 18px; }
+    .stat { background: var(--nih-light); border-radius: 10px; padding: 14px 20px; }
+    .stat .num { font-size: 1.6rem; font-weight: 700; color: var(--nih-dark); }
+    .stat .label { font-size: 0.78rem; color: var(--muted); }
+
+    #loginScreen {
+      max-width: 380px;
+      margin: 90px auto;
+    }
+    #toast {
+      position: fixed; bottom: 20px; right: 20px;
+      background: var(--text); color: #fff;
+      padding: 12px 18px; border-radius: 8px;
+      font-size: 0.85rem; opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+      max-width: 360px;
+    }
+    #toast.show { opacity: 1; }
+    #toast.error { background: var(--red); }
+
+    .hidden { display: none !important; }
+    .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .add-form { display: grid; gap: 10px; margin-top: 12px; border-top: 1px solid var(--border); padding-top: 14px; }
+
+    td.editing { background: var(--nih-light); }
+    .edit-cell-input {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--nih-blue);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-family: inherit;
+    }
+    textarea.edit-cell-input { min-height: 44px; resize: vertical; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>NIH RePORTER AI - Admin Panel</h1>
+    <p>API keys, matching threshold, question catalogue, and usage</p>
+  </div>
+  <button id="logoutBtn" class="hidden">Log out</button>
+</header>
+
+<main>
+
+  <div id="loginScreen">
+    <div class="card">
+      <h2>Admin Login</h2>
+      <p class="sub">Sign in to manage settings.</p>
+      <div class="field">
+        <label>Username</label>
+        <input id="loginUsername" autocomplete="username" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input id="loginPassword" type="password" autocomplete="current-password" />
+      </div>
+      <button class="primary" id="loginBtn" style="width:100%">Log in</button>
+      <p class="hint" style="margin-top:10px">Default: admin / admin123 (change this immediately below).</p>
+    </div>
+  </div>
+
+  <div id="dashboard" class="hidden">
+
+    <div class="card">
+      <h2>API Keys & Matching</h2>
+      <p class="sub">Keys are stored in the local database, not in .env, and take effect on the next request (no restart needed).</p>
+      <div class="grid-2">
+        <div class="field">
+          <label>Anthropic (Claude) API Key</label>
+          <input id="anthropicKey" placeholder="sk-ant-..." />
+          <div class="hint" id="anthropicPreview"></div>
+        </div>
+        <div class="field">
+          <label>Gemini API Key</label>
+          <input id="geminiKey" placeholder="AIzaSy..." />
+          <div class="hint" id="geminiPreview"></div>
+        </div>
+      </div>
+      <div class="field" style="max-width:260px">
+        <label>Catalogue match threshold (0-1)</label>
+        <input id="threshold" type="number" min="0" max="1" step="0.01" />
+        <div class="hint">Higher = stricter match required. Default 0.75.</div>
+      </div>
+      <button class="primary" id="saveSettingsBtn">Save settings</button>
+    </div>
+
+    <div class="card">
+      <h2>Admin Account</h2>
+      <p class="sub">Change the admin username or password.</p>
+      <div class="grid-2">
+        <div class="field">
+          <label>Username</label>
+          <input id="adminUsername" />
+        </div>
+        <div class="field">
+          <label>New password (leave blank to keep current)</label>
+          <input id="newPassword" type="password" autocomplete="new-password" />
+        </div>
+      </div>
+      <button class="primary" id="saveAccountBtn">Save account</button>
+    </div>
+
+    <div class="card">
+      <h2>Question Catalogue</h2>
+      <p class="sub">The governed questions (and required answer formats) matched against user queries.</p>
+      <div class="field" style="max-width:340px">
+        <input id="catalogueSearch" placeholder="Search questions, category, or output fields..." />
+      </div>
+      <div id="catalogueCount" class="hint" style="margin-bottom:8px"></div>
+      <div id="catalogueTableWrap"></div>
+
+      <div class="add-form">
+        <strong>Add new question</strong>
+        <div class="grid-2">
+          <div class="field"><label>Category code (e.g. A-11)</label><input id="newCategory" /></div>
+          <div class="field"><label>Category name</label><input id="newCategoryName" /></div>
+        </div>
+        <div class="field"><label>Question</label><textarea id="newQuestion"></textarea></div>
+        <div class="field"><label>Required output fields</label><textarea id="newOutputFields"></textarea></div>
+        <div class="field"><label>Answer contract (optional - default used if blank)</label><textarea id="newAnswerContract"></textarea></div>
+        <button class="primary" id="addQuestionBtn" style="width:fit-content">Add question</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Search Log & Usage</h2>
+      <div class="stat-row">
+        <div class="stat"><div class="num" id="statTotal">-</div><div class="label">Total searches</div></div>
+        <div class="stat"><div class="num" id="statSessions">-</div><div class="label">Distinct visitors</div></div>
+      </div>
+      <div id="searchLogTableWrap"></div>
+    </div>
+
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function toast(msg, isError) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = isError ? 'show error' : 'show';
+  setTimeout(() => { el.className = ''; }, 3000);
+}
+
+async function api(path, options = {}) {
+  const res = await fetch(`/admin/api${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    ...options,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str ?? '';
+  return div.innerHTML;
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────
+async function checkSession() {
+  try {
+    await api('/session');
+    showDashboard();
+  } catch {
+    showLogin();
+  }
+}
+
+function showLogin() {
+  $('loginScreen').classList.remove('hidden');
+  $('dashboard').classList.add('hidden');
+  $('logoutBtn').classList.add('hidden');
+}
+
+function showDashboard() {
+  $('loginScreen').classList.add('hidden');
+  $('dashboard').classList.remove('hidden');
+  $('logoutBtn').classList.remove('hidden');
+  loadSettings();
+  loadCatalogue();
+  loadSearchLog();
+}
+
+$('loginBtn').addEventListener('click', async () => {
+  try {
+    await api('/login', {
+      method: 'POST',
+      body: JSON.stringify({ username: $('loginUsername').value, password: $('loginPassword').value }),
+    });
+    toast('Logged in.');
+    showDashboard();
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+$('logoutBtn').addEventListener('click', async () => {
+  await api('/logout', { method: 'POST' });
+  showLogin();
+});
+
+// ─── Settings ────────────────────────────────────────────────────────────
+async function loadSettings() {
+  const s = await api('/settings');
+  $('anthropicPreview').textContent = s.anthropic_api_key_set ? `Currently set: ${s.anthropic_api_key_preview}` : 'Not set';
+  $('geminiPreview').textContent = s.gemini_api_key_set ? `Currently set: ${s.gemini_api_key_preview}` : 'Not set';
+  $('threshold').value = s.similarity_threshold;
+  $('adminUsername').value = s.admin_username;
+}
+
+$('saveSettingsBtn').addEventListener('click', async () => {
+  try {
+    await api('/settings', {
+      method: 'POST',
+      body: JSON.stringify({
+        anthropic_api_key: $('anthropicKey').value,
+        gemini_api_key: $('geminiKey').value,
+        similarity_threshold: $('threshold').value,
+      }),
+    });
+    $('anthropicKey').value = '';
+    $('geminiKey').value = '';
+    toast('Settings saved.');
+    loadSettings();
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+$('saveAccountBtn').addEventListener('click', async () => {
+  try {
+    await api('/settings', {
+      method: 'POST',
+      body: JSON.stringify({
+        admin_username: $('adminUsername').value,
+        new_password: $('newPassword').value,
+      }),
+    });
+    $('newPassword').value = '';
+    toast('Account updated.');
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+// ─── Catalogue ───────────────────────────────────────────────────────────
+let allCatalogueItems = [];
+let editingId = null;
+
+async function loadCatalogue() {
+  const { items } = await api('/catalogue');
+  allCatalogueItems = items;
+  renderCatalogue();
+}
+
+function renderCatalogue() {
+  const query = $('catalogueSearch').value.trim().toLowerCase();
+  const items = query
+    ? allCatalogueItems.filter(row =>
+        row.question.toLowerCase().includes(query) ||
+        row.category.toLowerCase().includes(query) ||
+        (row.category_name || '').toLowerCase().includes(query) ||
+        row.output_fields.toLowerCase().includes(query)
+      )
+    : allCatalogueItems;
+
+  $('catalogueCount').textContent = query
+    ? `${items.length} of ${allCatalogueItems.length} questions match "${query}"`
+    : `${items.length} questions total.`;
+
+  const wrap = $('catalogueTableWrap');
+  wrap.innerHTML = `
+    <table>
+      <thead><tr><th style="width:90px">Category</th><th>Question</th><th>Output fields</th><th style="width:150px"></th></tr></thead>
+      <tbody>
+        ${items.map(row => rowIsEditing(row.id) ? renderEditRow(row) : renderDisplayRow(row)).join('')}
+      </tbody>
+    </table>
+  `;
+
+  wrap.querySelectorAll('[data-delete]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete this question?')) return;
+      try {
+        await api(`/catalogue/${btn.dataset.delete}`, { method: 'DELETE' });
+        toast('Question deleted.');
+        loadCatalogue();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+  });
+
+  wrap.querySelectorAll('[data-edit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      editingId = parseInt(btn.dataset.edit, 10);
+      renderCatalogue();
+    });
+  });
+
+  wrap.querySelectorAll('[data-cancel-edit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      editingId = null;
+      renderCatalogue();
+    });
+  });
+
+  wrap.querySelectorAll('[data-save]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.save;
+      const row = wrap.querySelector(`tr[data-id="${id}"]`);
+      const payload = {
+        category: row.querySelector('[data-field="category"]').value.trim(),
+        category_name: row.querySelector('[data-field="category_name"]').value.trim(),
+        question: row.querySelector('[data-field="question"]').value.trim(),
+        output_fields: row.querySelector('[data-field="output_fields"]').value.trim(),
+        answer_contract: row.querySelector('[data-field="answer_contract"]').value.trim(),
+      };
+      if (!payload.category || !payload.question || !payload.output_fields) {
+        toast('Category, question, and output fields are required.', true);
+        return;
+      }
+      try {
+        await api(`/catalogue/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        toast('Question updated.');
+        editingId = null;
+        loadCatalogue();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+  });
+}
+
+function rowIsEditing(id) {
+  return editingId === id;
+}
+
+function renderDisplayRow(row) {
+  return `
+    <tr data-id="${row.id}">
+      <td><span class="badge">${escapeHtml(row.category)}</span></td>
+      <td>${escapeHtml(row.question)}</td>
+      <td>${escapeHtml(row.output_fields)}</td>
+      <td class="row-actions">
+        <button class="secondary" data-edit="${row.id}">Edit</button>
+        <button class="danger" data-delete="${row.id}">Delete</button>
+      </td>
+    </tr>
+  `;
+}
+
+function renderEditRow(row) {
+  return `
+    <tr data-id="${row.id}">
+      <td class="editing">
+        <input class="edit-cell-input" data-field="category" value="${escapeHtml(row.category)}" />
+        <input class="edit-cell-input" style="margin-top:6px" data-field="category_name" value="${escapeHtml(row.category_name)}" placeholder="Category name" />
+      </td>
+      <td class="editing"><textarea class="edit-cell-input" data-field="question">${escapeHtml(row.question)}</textarea></td>
+      <td class="editing">
+        <textarea class="edit-cell-input" data-field="output_fields">${escapeHtml(row.output_fields)}</textarea>
+        <textarea class="edit-cell-input" style="margin-top:6px" data-field="answer_contract" placeholder="Answer contract">${escapeHtml(row.answer_contract)}</textarea>
+      </td>
+      <td class="editing row-actions">
+        <button class="primary" data-save="${row.id}">Save</button>
+        <button class="secondary" data-cancel-edit="${row.id}">Cancel</button>
+      </td>
+    </tr>
+  `;
+}
+
+$('catalogueSearch').addEventListener('input', renderCatalogue);
+
+$('addQuestionBtn').addEventListener('click', async () => {
+  try {
+    await api('/catalogue', {
+      method: 'POST',
+      body: JSON.stringify({
+        category: $('newCategory').value,
+        category_name: $('newCategoryName').value,
+        question: $('newQuestion').value,
+        output_fields: $('newOutputFields').value,
+        answer_contract: $('newAnswerContract').value,
+      }),
+    });
+    ['newCategory', 'newCategoryName', 'newQuestion', 'newOutputFields', 'newAnswerContract'].forEach(id => $(id).value = '');
+    toast('Question added.');
+    loadCatalogue();
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+// ─── Search log ──────────────────────────────────────────────────────────
+async function loadSearchLog() {
+  const { total, distinct_sessions, items } = await api('/search-log?limit=200');
+  $('statTotal').textContent = total;
+  $('statSessions').textContent = distinct_sessions;
+
+  $('searchLogTableWrap').innerHTML = `
+    <table>
+      <thead><tr><th>Time</th><th>Query</th><th>Matched question</th><th>Similarity</th></tr></thead>
+      <tbody>
+        ${items.map(row => `
+          <tr>
+            <td style="white-space:nowrap">${escapeHtml(row.created_at)}</td>
+            <td>${escapeHtml(row.query)}</td>
+            <td>${row.matched_question ? `<span class="badge">${escapeHtml(row.matched_category)}</span> ${escapeHtml(row.matched_question)}` : '<span class="hint">No match</span>'}</td>
+            <td>${row.similarity ? row.similarity.toFixed(3) : '-'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+checkSession();
+</script>
+
+</body>
+</html>

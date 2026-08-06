@@ -1,0 +1,192 @@
+[
+  {
+    "category": "A-1",
+    "categoryName": "New Awards and Funding Timing",
+    "answerContract": "State the population, time window, filters, ranking rule, and data freshness. Return a structured table that can be exported, not only narrative prose. Cite evidence for scientific classification and non-obvious business conclusions. Disclose incomplete source coverage, ambiguous identities, and inferred values.",
+    "questions": [
+      { "question": "Which new NIH awards from the past 30 days involve small-molecule drug discovery?", "outputFields": "Project, PI, organization, institute, activity, award date/amount, modality, score" },
+      { "question": "Which newly funded R01 projects explicitly mention medicinal chemistry or lead optimization?", "outputFields": "Project + evidence span + chemistry activity + contact" },
+      { "question": "Which grants received a supplement or material funding increase this quarter?", "outputFields": "Funding event, before/after amount, reason, opportunity" },
+      { "question": "Which projects were renewed within the past 90 days and still have unresolved chemistry milestones?", "outputFields": "Renewal event, stage, chemistry signals, end date" },
+      { "question": "Which active projects will reach their budget-period end within six months?", "outputFields": "Project, PI, budget end, active funding, outreach timing" },
+      { "question": "Which projects will reach the overall project end within 12 months and may seek follow-on support?", "outputFields": "Project end, funding history, output momentum, renewal signal" },
+      { "question": "Which investigators received their first active R01 relevant to drug discovery?", "outputFields": "PI profile, prior awards, new project, institution, contact readiness" },
+      { "question": "Which organizations gained the most new chemistry-relevant NIH funding this quarter?", "outputFields": "Organization, new funding, project count, topics, rank" },
+      { "question": "Which NCI awards added new small-molecule projects this month?", "outputFields": "Institute-filtered new project table" },
+      { "question": "Which NIAID awards added antiviral or antimicrobial chemistry programs this quarter?", "outputFields": "Project, pathogen/target, modality, stage, evidence" },
+      { "question": "Which awards moved from Phase I SBIR to Phase II or Fast-Track development?", "outputFields": "Company, prior/current award, phase transition, opportunity score" },
+      { "question": "What changed in my saved NIH opportunity universe since last Monday?", "outputFields": "Added/changed/removed entities, change type, evidence, action" }
+    ]
+  },
+  {
+    "category": "A-2",
+    "categoryName": "Medicinal Chemistry and Custom Synthesis",
+    "answerContract": "State the population, time window, filters, ranking rule, and data freshness. Return a structured table that can be exported, not only narrative prose. Cite evidence for scientific classification and non-obvious business conclusions. Disclose incomplete source coverage, ambiguous identities, and inferred values.",
+    "questions": [
+      { "question": "Which active grants explicitly mention medicinal chemistry?", "outputFields": "Project, evidence phrase, PI, organization, funding, score" },
+      { "question": "Which projects mention SAR, analog synthesis, or compound optimization?", "outputFields": "Project, chemistry activity, stage, evidence, contact" },
+      { "question": "Which projects are transitioning from screening hits to hit-to-lead work?", "outputFields": "Stage transition signals, target, assay, opportunity timing" },
+      { "question": "Which projects require synthesis of focused libraries or chemical probes?", "outputFields": "Library/probe need, compound class, quantity signal, service fit" },
+      { "question": "Which projects mention route scouting, process development, or scale-up?", "outputFields": "Process need, stage, scale clues, service fit" },
+      { "question": "Which projects need reference standards, metabolites, or impurity synthesis?", "outputFields": "Requested material type, analytical context, program stage" },
+      { "question": "Which funded teams mention challenging heterocycles, chiral synthesis, or macrocycles?", "outputFields": "Chemistry class, project, evidence, priority" },
+      { "question": "Which projects mention covalent inhibitors and electrophile optimization?", "outputFields": "Target, warhead class, selectivity/safety work, PI" },
+      { "question": "Which programs require structure-activity relationship expansion around a disclosed scaffold?", "outputFields": "Scaffold/project, SAR stage, publication/patent evidence" },
+      { "question": "Which grants involve fragment-based discovery and fragment-to-lead chemistry?", "outputFields": "Screening method, target, chemistry stage, funding" },
+      { "question": "Which projects mention DMPK-driven medicinal chemistry iteration?", "outputFields": "ADME/PK signal, optimization goal, stage, opportunity" },
+      { "question": "Rank the current projects by likely near-term custom-synthesis demand.", "outputFields": "Ranked project table with score components and reason codes" }
+    ]
+  },
+  {
+    "category": "A-3",
+    "categoryName": "AAPharmaSyn Specialty Service Fit",
+    "answerContract": "State the population, time window, filters, ranking rule, and data freshness. Return a structured table that can be exported, not only narrative prose. Cite evidence for scientific classification and non-obvious business conclusions. Disclose incomplete source coverage, ambiguous identities, and inferred values.",
+    "questions": [
+      { "question": "Which NIH projects require stable-isotope-labeled compounds?", "outputFields": "Project, isotope/material, use, quantity clues, PI" },
+      { "question": "Which grants involve synthesis of labeled metabolites for ADME or bioanalysis?", "outputFields": "Metabolite, isotope, assay purpose, stage" },
+      { "question": "Which projects need lipid synthesis or lipid-like delivery components?", "outputFields": "Lipid class, application, modality, service fit" },
+      { "question": "Which funded programs involve lipid nanoparticles with custom lipid chemistry needs?", "outputFields": "LNP project, payload, lipid component, partner signals" },
+      { "question": "Which projects involve carbohydrate, glycomimetic, or glycoconjugate synthesis?", "outputFields": "Carbohydrate class, target/disease, chemistry need" },
+      { "question": "Which grants involve ADC linker or payload chemistry?", "outputFields": "Antibody target, payload class, linker design, stage" },
+      { "question": "Which projects involve radiolabeled or imaging-agent precursor synthesis?", "outputFields": "Label/isotope, imaging modality, precursor need" },
+      { "question": "Which grants involve PROTACs or heterobifunctional degraders?", "outputFields": "Target, ligase, linker, degrader stage, score" },
+      { "question": "Which projects involve molecular glues requiring analog synthesis?", "outputFields": "Target/mechanism, compound series, optimization need" },
+      { "question": "Which projects require peptide or peptidomimetic medicinal chemistry?", "outputFields": "Peptide class, modifications, stage, fit" },
+      { "question": "Which grants involve natural-product analog or semisynthetic chemistry?", "outputFields": "Natural product/scaffold, analog need, route complexity" },
+      { "question": "Rank opportunities by best-fitting AAPharmaSyn service line.", "outputFields": "Opportunity, primary/secondary service, evidence, score" }
+    ]
+  },
+  {
+    "category": "A-4",
+    "categoryName": "Therapeutic Areas, Targets, and Modalities",
+    "answerContract": "State the population, time window, filters, ranking rule, and data freshness. Return a structured table that can be exported, not only narrative prose. Cite evidence for scientific classification and non-obvious business conclusions. Disclose incomplete source coverage, ambiguous identities, and inferred values.",
+    "questions": [
+      { "question": "What are the fastest-growing NIH-funded therapeutic areas for small molecules over five years?", "outputFields": "Year, therapeutic area, project count, funding, growth" },
+      { "question": "Which active pancreatic cancer projects involve druggable metabolic targets?", "outputFields": "Project, target/pathway, modality, stage, PI" },
+      { "question": "Which AML projects involve small-molecule target validation or lead optimization?", "outputFields": "Project, target, chemistry stage, institute" },
+      { "question": "Which CNS projects involve brain-penetrant small molecules?", "outputFields": "Disease, target, BBB/PK evidence, stage" },
+      { "question": "Which infectious-disease projects involve direct-acting antivirals?", "outputFields": "Pathogen, target, mechanism, chemistry stage" },
+      { "question": "Which projects target mitochondrial metabolism or oxidative phosphorylation?", "outputFields": "Target/complex/pathway, disease, modality" },
+      { "question": "Which grants involve GPCR, kinase, ion-channel, or epigenetic targets?", "outputFields": "Target class, target, project, stage, score" },
+      { "question": "Which projects use covalent, allosteric, or protein-degradation mechanisms?", "outputFields": "Mechanism class, target, disease, funding" },
+      { "question": "Which emerging targets have at least three newly funded independent groups?", "outputFields": "Target, investigators, organizations, new funding" },
+      { "question": "Where are multiple NIH groups pursuing the same target with different modalities?", "outputFields": "Target, modality comparison, programs, institutions" },
+      { "question": "Which disease areas show strong discovery funding but few clinical trials?", "outputFields": "Disease, discovery funding, trial count, gap" },
+      { "question": "Which targets have recent publications, patents, and active NIH awards?", "outputFields": "Target dossier across projects/outputs" }
+    ]
+  },
+  {
+    "category": "A-5",
+    "categoryName": "Investigator and Collaboration Intelligence",
+    "answerContract": "State the population, time window, filters, ranking rule, and data freshness. Return a structured table that can be exported, not only narrative prose. Cite evidence for scientific classification and non-obvious business conclusions. Disclose incomplete source coverage, ambiguous identities, and inferred values.",
+    "questions": [
+      { "question": "Who are the top active NIH-funded investigators in medicinal chemistry?", "outputFields": "PI, active funding, projects, chemistry evidence, institution" },
+      { "question": "Which PIs have multiple active drug-discovery grants but limited chemistry publications?", "outputFields": "PI, grants, publication profile, outsourcing signal" },
+      { "question": "Which investigators have newly moved institutions while retaining active awards?", "outputFields": "PI, old/new affiliation, award relationship, date" },
+      { "question": "Which PIs repeatedly collaborate with small businesses on SBIR/STTR projects?", "outputFields": "PI-company relationships, projects, mechanisms" },
+      { "question": "Which investigators work across multiple therapeutic areas using the same platform chemistry?", "outputFields": "PI, platform, diseases, projects" },
+      { "question": "Which PIs have the strongest recent publication momentum in small-molecule discovery?", "outputFields": "PI, recent publications, normalized momentum" },
+      { "question": "Which investigators have patents related to their active NIH projects?", "outputFields": "PI, patents, project links, assignees" },
+      { "question": "Which PIs have active awards but no relevant contact route?", "outputFields": "PI, projects, contact gap, organization route" },
+      { "question": "Who are the central collaborators in a target-specific NIH network?", "outputFields": "Network nodes, shared projects/outputs, centrality" },
+      { "question": "Which investigators appear in both academic R01 and company SBIR portfolios?", "outputFields": "PI, academic/company links, awards" },
+      { "question": "Which PIs are closest to AAPharmaSyn geographically and scientifically?", "outputFields": "PI, distance/hub, service fit, score" },
+      { "question": "Recommend the 25 investigators AAPharmaSyn should review this week.", "outputFields": "Ranked PI list with reasons, evidence, next action" }
+    ]
+  },
+  {
+    "category": "A-6",
+    "categoryName": "Institution and Geographic Intelligence",
+    "answerContract": "State the population, time window, filters, ranking rule, and data freshness. Return a structured table that can be exported, not only narrative prose. Cite evidence for scientific classification and non-obvious business conclusions. Disclose incomplete source coverage, ambiguous identities, and inferred values.",
+    "questions": [
+      { "question": "Which universities have the most active chemistry-relevant NIH projects?", "outputFields": "Institution, project count, funding, topics" },
+      { "question": "Which institutions show rising small-molecule funding over three years?", "outputFields": "Institution-year trend, growth, new PIs" },
+      { "question": "Which organizations have drug-discovery grants but no visible medicinal chemistry core?", "outputFields": "Organization, projects, infrastructure evidence gap" },
+      { "question": "Which cancer centers have the strongest preclinical small-molecule portfolios?", "outputFields": "Center, projects, targets, stage" },
+      { "question": "Which academic institutions partner most often with SBIR/STTR companies?", "outputFields": "Institution, companies, linked awards" },
+      { "question": "Which cities have the highest density of Tier 1 NIH opportunities?", "outputFields": "City/hub, opportunity count, score distribution" },
+      { "question": "Which opportunities are within driving distance of Ann Arbor?", "outputFields": "Organization, city, distance band, score" },
+      { "question": "Which states received the largest increase in relevant NIH funding?", "outputFields": "State, yearly funding, growth, organizations" },
+      { "question": "Which institutions have multiple expiring drug-discovery grants in the next year?", "outputFields": "Institution, projects, end dates, outreach timing" },
+      { "question": "Which organizations are newly entering NIH-funded therapeutic discovery?", "outputFields": "Organization, first/new awards, modality" },
+      { "question": "Which institutions have complementary lipid, carbohydrate, or isotope portfolios?", "outputFields": "Institution, service-line concentration, projects" },
+      { "question": "Build a geographic BD trip list for Boston, San Diego, and the Bay Area.", "outputFields": "Hub, company/PI, priority, contact, meeting rationale" }
+    ]
+  },
+  {
+    "category": "A-7",
+    "categoryName": "SBIR/STTR and Company Intelligence",
+    "answerContract": "State the population, time window, filters, ranking rule, and data freshness. Return a structured table that can be exported, not only narrative prose. Cite evidence for scientific classification and non-obvious business conclusions. Disclose incomplete source coverage, ambiguous identities, and inferred values.",
+    "questions": [
+      { "question": "Which Phase I SBIR companies are developing small-molecule therapeutics?", "outputFields": "Company, award, phase, project, score" },
+      { "question": "Which Phase II companies mention lead optimization, IND-enabling work, or scale-up?", "outputFields": "Company, milestone, chemistry need, timing" },
+      { "question": "Which Fast-Track awards involve oncology or infectious disease compounds?", "outputFields": "Company, award, disease, modality, funding" },
+      { "question": "Which NIH-funded companies have fewer than 200 estimated employees?", "outputFields": "Company, employee evidence/band, projects, confidence" },
+      { "question": "Which companies have strong funding but no visible internal chemistry leadership?", "outputFields": "Company, funding, team evidence, outsourcing signal" },
+      { "question": "Which companies recently received multiple NIH awards for one platform?", "outputFields": "Company, platform, awards, momentum" },
+      { "question": "Which SBIR recipients collaborate with academic medicinal chemists?", "outputFields": "Company, academic PI/institution, projects" },
+      { "question": "Which company projects are likely to need kilogram-scale non-GMP process work?", "outputFields": "Company, stage, scale/IND signals, process fit" },
+      { "question": "Which companies have active clinical studies linked to NIH-supported compounds?", "outputFields": "Company, project, NCT, phase/status" },
+      { "question": "Which companies have patent momentum but limited public financing evidence?", "outputFields": "Company, patents, NIH funding, funding-data gap" },
+      { "question": "Which Tier 2 companies should be promoted after live validation?", "outputFields": "Company, prior/new evidence, score delta" },
+      { "question": "Build the top 100 NIH-funded biotech CRO prospects.", "outputFields": "Ranked company table with evidence, contacts, service fit" }
+    ]
+  },
+  {
+    "category": "A-8",
+    "categoryName": "Outputs, Translation, and Commercialization Signals",
+    "answerContract": "State the population, time window, filters, ranking rule, and data freshness. Return a structured table that can be exported, not only narrative prose. Cite evidence for scientific classification and non-obvious business conclusions. Disclose incomplete source coverage, ambiguous identities, and inferred values.",
+    "questions": [
+      { "question": "Which active projects produced medicinal-chemistry publications in the past year?", "outputFields": "Project, publications, compounds/targets, dates" },
+      { "question": "Which grants have new patents but no linked clinical study?", "outputFields": "Project, patents, trial gap, stage" },
+      { "question": "Which projects have entered clinical testing since their NIH award began?", "outputFields": "Project, linked trial, transition date, evidence" },
+      { "question": "Which projects show publication momentum but declining funding?", "outputFields": "Project, output trend, funding trend, risk" },
+      { "question": "Which projects have funding momentum but no recent public outputs?", "outputFields": "Project, funding event, output gap, caveat" },
+      { "question": "Which small-molecule projects have an active recruiting trial?", "outputFields": "Project, intervention, NCT, phase/status" },
+      { "question": "Which targets show concurrent NIH awards, patents, and early clinical trials?", "outputFields": "Target, projects, patents, trials, organizations" },
+      { "question": "Which projects mention IND-enabling milestones?", "outputFields": "Project, milestone evidence, stage, service need" },
+      { "question": "Which programs are likely moving from discovery to process chemistry?", "outputFields": "Project, milestone/output signals, timing" },
+      { "question": "Which projects have translational supplements or commercialization mechanisms?", "outputFields": "Project, mechanism/event, company/partner" },
+      { "question": "Which programs have repeated negative or terminated trial signals?", "outputFields": "Project/trial, status history, caution" },
+      { "question": "Build a translational-readiness table for Tier 1 opportunities.", "outputFields": "Opportunity, funding, stage, outputs, readiness, evidence" }
+    ]
+  },
+  {
+    "category": "A-9",
+    "categoryName": "Portfolio, Competitive, and Trend Analysis",
+    "answerContract": "State the population, time window, filters, ranking rule, and data freshness. Return a structured table that can be exported, not only narrative prose. Cite evidence for scientific classification and non-obvious business conclusions. Disclose incomplete source coverage, ambiguous identities, and inferred values.",
+    "questions": [
+      { "question": "How has NIH funding for AI-enabled small-molecule discovery changed over five years?", "outputFields": "Year, project count, funding, methods, institutions" },
+      { "question": "Which modalities are gaining share within oncology discovery awards?", "outputFields": "Year, modality, funding share, growth" },
+      { "question": "Which institutes fund the most medicinal chemistry and custom synthesis work?", "outputFields": "Institute, projects, funding, topic mix" },
+      { "question": "Which targets are becoming crowded across NIH-funded groups?", "outputFields": "Target, group count, funding, modality diversity" },
+      { "question": "Which therapeutic areas are underrepresented in AAPharmaSyn current outreach?", "outputFields": "NIH opportunity mix versus internal pipeline" },
+      { "question": "Which CROs or external chemistry partners are acknowledged in public project outputs?", "outputFields": "Provider, evidence, client institutions, context" },
+      { "question": "Which universities are building internal chemistry capability and may be lower-fit?", "outputFields": "Institution, staffing/core signals, portfolio" },
+      { "question": "Which emerging platform technologies align with AAPharmaSyn capabilities?", "outputFields": "Technology, funding trend, service mapping" },
+      { "question": "Where is NIH funding growing faster than the number of investigators?", "outputFields": "Area, funding/PI trend, concentration" },
+      { "question": "Which activity codes produce the highest conversion to company formation or trials?", "outputFields": "Mechanism, outputs, company/trial linkage" },
+      { "question": "Compare AAPharmaSyn Tier 1 distribution with total relevant NIH universe.", "outputFields": "Segment shares, gaps, bias indicators" },
+      { "question": "Create a quarterly NIH drug-discovery market intelligence brief.", "outputFields": "Narrative plus governed trend tables and sources" }
+    ]
+  },
+  {
+    "category": "A-10",
+    "categoryName": "Operational, Data Quality, and AI Governance",
+    "answerContract": "State the population, time window, filters, ranking rule, and data freshness. Return a structured table that can be exported, not only narrative prose. Cite evidence for scientific classification and non-obvious business conclusions. Disclose incomplete source coverage, ambiguous identities, and inferred values.",
+    "questions": [
+      { "question": "When did each source last refresh successfully?", "outputFields": "Source, last success, data timestamp, lag, status" },
+      { "question": "Which NIH retrieval jobs are incomplete or truncated?", "outputFields": "Job, criteria, expected/retrieved, error, action" },
+      { "question": "Which records failed normalization or quality gates?", "outputFields": "Batch, entity, rule, error class, replay status" },
+      { "question": "Which entity-resolution candidates are aging in review?", "outputFields": "Entity type, candidate, confidence, age, impact" },
+      { "question": "Which Tier 1 scores rely on low-confidence or stale evidence?", "outputFields": "Opportunity, score, confidence, stale features" },
+      { "question": "Which model or taxonomy change caused the largest tier shifts?", "outputFields": "Version comparison, affected records, reasons" },
+      { "question": "What is citation coverage for the top 100 opportunities?", "outputFields": "Opportunity, claims, supported %, gaps" },
+      { "question": "Which alerts have the highest conversion and lowest dismissal rates?", "outputFields": "Alert rule, delivered, converted, dismissed" },
+      { "question": "Which queries return partial results because of source limits?", "outputFields": "Query, source, limitation, partition status" },
+      { "question": "Which exports contained restricted or unverified fields?", "outputFields": "Export control report; ideally zero" },
+      { "question": "How accurate are science classifications by modality and institute?", "outputFields": "Benchmark metrics, error types, trend" },
+      { "question": "What should the product team fix first this week?", "outputFields": "Prioritized incidents, quality gaps, user friction, business impact" }
+    ]
+  }
+]

@@ -2,3 +2,7 @@ node_modules/
 .env
 *.log
 .claude/
+data.db
+data.db-shm
+data.db-wal
+*.docx
