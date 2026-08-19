@@ -7,7 +7,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const path = require('path');
 
-const { sql, ensureInitialized, getSettingValue, setSettingValue } = require('./db');
+const { sql, ensureInitialized, getSettingValue } = require('./db');
 const { matchQuery } = require('./catalogue');
 const adminRouter = require('./admin-routes');
 
@@ -15,31 +15,21 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const GEMINI_MODEL = 'gemini-flash-latest';
 
-// One-time migration: if the DB has no key yet but .env does, seed it in.
-// After this, the admin panel (backed by Postgres) is the source of truth.
-// Runs lazily (not at module load) since it needs the DB connection ready.
-let migrationDone = false;
-async function ensureEnvKeysMigrated() {
-  if (migrationDone) return;
-  migrationDone = true;
-
-  await ensureInitialized();
-  if (!(await getSettingValue('anthropic_api_key')) && process.env.ANTHROPIC_API_KEY) {
-    await setSettingValue('anthropic_api_key', process.env.ANTHROPIC_API_KEY);
-  }
-  if (!(await getSettingValue('gemini_api_key')) && process.env.GEMINI_API_KEY) {
-    await setSettingValue('gemini_api_key', process.env.GEMINI_API_KEY);
-  }
-}
-
+// The database (managed via the admin panel) is the single source of truth
+// for API keys — no .env fallback. Mixing the two caused a stale env var to
+// occasionally look "invalid" after the admin panel's key had already been
+// updated, since env vars and DB rows can silently drift apart.
 async function getAnthropicClient() {
-  await ensureEnvKeysMigrated();
+  await ensureInitialized();
   const apiKey = await getSettingValue('anthropic_api_key');
-  return new Anthropic({ apiKey: apiKey || undefined });
+  if (!apiKey) {
+    throw new Error('No Anthropic API key configured. Set one in the admin panel (/admin.html).');
+  }
+  return new Anthropic({ apiKey });
 }
 
 async function getGeminiClient() {
-  await ensureEnvKeysMigrated();
+  await ensureInitialized();
   const apiKey = await getSettingValue('gemini_api_key');
   return apiKey ? new GoogleGenerativeAI(apiKey) : null;
 }
