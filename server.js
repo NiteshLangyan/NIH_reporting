@@ -34,12 +34,24 @@ async function getGeminiClient() {
   return apiKey ? new GoogleGenerativeAI(apiKey) : null;
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Gemini's free tier (gemini-flash-latest) periodically returns 503
+// "currently experiencing high demand" or 429 rate-limit errors that are
+// typically resolved within a few seconds. Retry those specifically before
+// giving up, so a transient Google-side blip doesn't fail the whole request
+// right when Anthropic has also failed over.
+function isTransientGeminiError(err) {
+  return err && (err.status === 503 || err.status === 429);
+}
+
 // ─── Shared LLM call: try Claude first, fall back to Gemini if it fails ─────
 async function askLLM({ system, prompt, maxTokens = 2048 }) {
   try {
     const anthropic = await getAnthropicClient();
+    const claudeModel = await getSettingValue('claude_model', 'claude-sonnet-5');
     const message = await anthropic.messages.create({
-      model: 'claude-opus-4-8',
+      model: claudeModel,
       max_tokens: maxTokens,
       system,
       messages: [{ role: 'user', content: prompt }],
@@ -53,17 +65,30 @@ async function askLLM({ system, prompt, maxTokens = 2048 }) {
       throw new Error(`Anthropic API failed and no Gemini API key is configured for fallback: ${claudeErr.message}`);
     }
 
-    try {
-      const model = genAI.getGenerativeModel({
-        model: GEMINI_MODEL,
-        systemInstruction: system,
-      });
-      const result = await model.generateContent(prompt);
-      return result.response.text();
-    } catch (geminiErr) {
-      console.error('❌ Gemini fallback also failed:', geminiErr.message);
-      throw new Error(`Both Anthropic and Gemini failed. Anthropic: ${claudeErr.message}; Gemini: ${geminiErr.message}`);
+    const model = genAI.getGenerativeModel({
+      model: GEMINI_MODEL,
+      systemInstruction: system,
+    });
+
+    const maxAttempts = 3;
+    let lastGeminiErr;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const result = await model.generateContent(prompt);
+        return result.response.text();
+      } catch (geminiErr) {
+        lastGeminiErr = geminiErr;
+        const willRetry = attempt < maxAttempts && isTransientGeminiError(geminiErr);
+        if (willRetry) {
+          const delayMs = attempt * 1500; // 1.5s, then 3s
+          console.error(`⚠️  Gemini attempt ${attempt} failed (transient), retrying in ${delayMs}ms:`, geminiErr.message);
+          await sleep(delayMs);
+        }
+      }
     }
+
+    console.error('❌ Gemini fallback also failed after retries:', lastGeminiErr.message);
+    throw new Error(`Both Anthropic and Gemini failed. Anthropic: ${claudeErr.message}; Gemini: ${lastGeminiErr.message}`);
   }
 }
 

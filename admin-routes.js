@@ -11,6 +11,15 @@ const {
 
 const router = express.Router();
 
+// Selectable Claude models for query-building/summarization, with published
+// per-million-token pricing so the admin panel can show an estimated cost.
+// Sonnet is the default (see db.js) — Opus is far pricier and not needed here.
+const CLAUDE_MODELS = [
+  { id: 'claude-opus-4-8', label: 'Claude Opus 4.8', input_per_mtok: 5.0, output_per_mtok: 25.0 },
+  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5', input_per_mtok: 3.0, output_per_mtok: 15.0 },
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', input_per_mtok: 1.0, output_per_mtok: 5.0 },
+];
+
 // ─── Auth ─────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -46,7 +55,7 @@ router.get('/session', requireAdmin, (req, res) => {
 // Everything below requires an authenticated admin session.
 router.use(requireAdmin);
 
-// ─── Settings: API keys + similarity threshold ─────────────────────────────
+// ─── Settings: API keys + similarity threshold + Claude model ──────────────
 router.get('/settings', async (req, res) => {
   const anthropicKey = await getSettingValue('anthropic_api_key', '');
   const geminiKey = await getSettingValue('gemini_api_key', '');
@@ -58,11 +67,13 @@ router.get('/settings', async (req, res) => {
     gemini_api_key_preview: geminiKey ? `${geminiKey.slice(0, 6)}...${geminiKey.slice(-4)}` : '',
     similarity_threshold: parseFloat(await getSettingValue('similarity_threshold', '0.75')),
     admin_username: await getSettingValue('admin_username', 'admin'),
+    claude_model: await getSettingValue('claude_model', 'claude-sonnet-5'),
+    claude_models: CLAUDE_MODELS,
   });
 });
 
 router.post('/settings', async (req, res) => {
-  const { anthropic_api_key, gemini_api_key, similarity_threshold, admin_username, new_password } = req.body;
+  const { anthropic_api_key, gemini_api_key, similarity_threshold, admin_username, new_password, claude_model } = req.body;
 
   if (typeof anthropic_api_key === 'string' && anthropic_api_key.trim() !== '') {
     await setSettingValue('anthropic_api_key', anthropic_api_key.trim());
@@ -85,6 +96,12 @@ router.post('/settings', async (req, res) => {
       return res.status(400).json({ error: 'New password must be at least 8 characters.' });
     }
     await updateAdminPassword(new_password);
+  }
+  if (typeof claude_model === 'string' && claude_model.trim() !== '') {
+    if (!CLAUDE_MODELS.some((m) => m.id === claude_model)) {
+      return res.status(400).json({ error: `Unknown claude_model. Must be one of: ${CLAUDE_MODELS.map((m) => m.id).join(', ')}` });
+    }
+    await setSettingValue('claude_model', claude_model);
   }
 
   res.json({ success: true });

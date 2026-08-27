@@ -70,6 +70,9 @@ async function seedDefaultSettings() {
     admin_password_hash: bcrypt.hashSync('admin123', 10),
     anthropic_api_key: '',
     gemini_api_key: '',
+    // Default Claude model for query-building and summarization. Sonnet is
+    // the default — Opus is far more expensive and not needed for this task.
+    claude_model: 'claude-sonnet-5',
   };
 
   for (const [key, value] of Object.entries(defaults)) {

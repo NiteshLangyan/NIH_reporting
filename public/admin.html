@@ -206,10 +206,17 @@
           <div class="hint" id="geminiPreview"></div>
         </div>
       </div>
-      <div class="field" style="max-width:260px">
-        <label>Catalogue match threshold (0-1)</label>
-        <input id="threshold" type="number" min="0" max="1" step="0.01" />
-        <div class="hint">Higher = stricter match required. Default 0.75.</div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Claude model (query-building &amp; summarization)</label>
+          <select id="claudeModel"></select>
+          <div class="hint" id="claudeModelCost"></div>
+        </div>
+        <div class="field">
+          <label>Catalogue match threshold (0-1)</label>
+          <input id="threshold" type="number" min="0" max="1" step="0.01" />
+          <div class="hint">Higher = stricter match required. Default 0.75.</div>
+        </div>
       </div>
       <button class="primary" id="saveSettingsBtn">Save settings</button>
     </div>
@@ -338,13 +345,30 @@ $('logoutBtn').addEventListener('click', async () => {
 });
 
 // ─── Settings ────────────────────────────────────────────────────────────
+let claudeModelsCache = [];
+
+function renderClaudeModelCost(modelId) {
+  const model = claudeModelsCache.find((m) => m.id === modelId);
+  if (!model) { $('claudeModelCost').textContent = ''; return; }
+  $('claudeModelCost').textContent =
+    `Est. cost: $${model.input_per_mtok.toFixed(2)} / 1M input tokens, $${model.output_per_mtok.toFixed(2)} / 1M output tokens.`;
+}
+
 async function loadSettings() {
   const s = await api('/settings');
   $('anthropicPreview').textContent = s.anthropic_api_key_set ? `Currently set: ${s.anthropic_api_key_preview}` : 'Not set';
   $('geminiPreview').textContent = s.gemini_api_key_set ? `Currently set: ${s.gemini_api_key_preview}` : 'Not set';
   $('threshold').value = s.similarity_threshold;
   $('adminUsername').value = s.admin_username;
+
+  claudeModelsCache = s.claude_models || [];
+  const select = $('claudeModel');
+  select.innerHTML = claudeModelsCache.map(m => `<option value="${m.id}">${escapeHtml(m.label)}</option>`).join('');
+  select.value = s.claude_model;
+  renderClaudeModelCost(s.claude_model);
 }
+
+$('claudeModel').addEventListener('change', () => renderClaudeModelCost($('claudeModel').value));
 
 $('saveSettingsBtn').addEventListener('click', async () => {
   try {
@@ -354,6 +378,7 @@ $('saveSettingsBtn').addEventListener('click', async () => {
         anthropic_api_key: $('anthropicKey').value,
         gemini_api_key: $('geminiKey').value,
         similarity_threshold: $('threshold').value,
+        claude_model: $('claudeModel').value,
       }),
     });
     $('anthropicKey').value = '';
