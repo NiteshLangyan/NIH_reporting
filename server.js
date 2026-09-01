@@ -170,7 +170,7 @@ You must return a JSON object with exactly two keys:
     "fiscal_years": [2022, 2023, 2024],             // filter by fiscal year(s)
     "org_names": ["Harvard University"],            // filter by organization
     "pi_names": [{"first_name":"John","last_name":"Smith"}], // filter by PI
-    "activity_codes": ["R01","R21"],                // NIH activity codes
+    "activity_codes": ["R01","R21"],                // NIH activity codes. SBIR: R43 (Phase I), R44 (Phase II, incl. Fast-Track). STTR: R41 (Phase I), R42 (Phase II, incl. Fast-Track).
     "award_types": ["1","2"],                       // award type codes
     "org_states": ["CA","NY"],                      // US state abbreviations
     "agencies": ["NCI","NIMH"],                     // NIH institutes/agencies
@@ -213,6 +213,8 @@ Rules:
 - For keyword/topic searches use "advanced_text_search" — never "search_id" (that field retrieves a previously saved search by ID, not a new keyword search).
 - For "only active/ongoing/current projects" use "include_active_projects": true — never "is_active" (not a real field; NIH silently ignores it and returns unfiltered results).
 - For any date-bounded phrase ("past 30 days", "within N months", "this quarter", "expiring soon", "recently funded"), compute concrete from_date/to_date values from today's date and apply them to the most relevant date field (award_notice_date for new awards, project_end_date for expirations/renewals, project_start_date for start-date windows).
+- For SBIR/STTR questions, always set "activity_codes" to the matching codes — never rely on keyword search alone for these, since the mechanism is a structured field, not free text. "SBIR" → ["R43","R44"]. "STTR" → ["R41","R42"]. "SBIR or STTR" / unspecified → ["R41","R42","R43","R44"]. "Phase I" → ["R43","R41"]. "Phase II" → ["R44","R42"].
+- "Fast-Track" is a combined Phase I+II SBIR/STTR application pathway, NOT a separate activity code and NOT a queryable field in this API — there is no way to filter for it precisely. For a Fast-Track question, set "activity_codes" to ["R44","R42"] (the Phase II codes Fast-Track awards use) AND use "advanced_text_search" with relevant topic keywords (e.g. the disease/compound area named in the question) to narrow results, since activity code alone will return all Phase II SBIR/STTR awards regardless of Fast-Track status.
 - Return ONLY valid JSON with no explanation, no markdown, no code blocks. Just raw JSON.`;
 }
 
