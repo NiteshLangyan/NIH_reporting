@@ -639,9 +639,10 @@
 
       } else if (endpoint === 'publications') {
         const title = item.pub_title || item.title || 'Untitled';
-        const authors = item.author_list || item.authors || '—';
+        const authorsRaw = item.author_list || item.authors;
+        const authors = Array.isArray(authorsRaw) ? authorsRaw.join(', ') : (authorsRaw || '—');
         const journal = item.journal_title || item.journal || '';
-        const year = item.pub_year || item.year || '';
+        const year = item.pub_year || item.year || item.pub_date || '';
         const pmid = item.pmid || '';
 
         card.innerHTML = `

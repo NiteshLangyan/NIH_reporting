@@ -54,9 +54,17 @@ async function askLLM({ system, prompt, maxTokens = 2048 }) {
       model: claudeModel,
       max_tokens: maxTokens,
       system,
+      // Sonnet/Opus models with adaptive thinking on can return a `thinking`
+      // block before the `text` block, so content[0] is not reliably the
+      // answer — find the actual text block instead.
+      thinking: { type: 'disabled' },
       messages: [{ role: 'user', content: prompt }],
     });
-    return message.content[0].text;
+    const textBlock = message.content.find((block) => block.type === 'text');
+    if (!textBlock) {
+      throw new Error(`Anthropic response had no text block (stop_reason: ${message.stop_reason}).`);
+    }
+    return textBlock.text;
   } catch (claudeErr) {
     console.error('⚠️  Anthropic API failed, falling back to Gemini:', claudeErr.message);
 
@@ -253,6 +261,44 @@ async function callNIHReporter(endpoint, payload) {
   }
 }
 
+// ─── Step 2b: Enrich publications with real bibliographic data from PubMed ──
+// NIH RePORTER's /v2/publications/search only returns linking IDs (pmid,
+// coreproject, applid) — no title, authors, or journal. Fetch those from
+// NCBI's free E-utilities esummary endpoint and merge them in. Best-effort:
+// if PubMed is unreachable, the search still succeeds with the bare IDs.
+async function enrichPublicationsWithPubMed(nihData) {
+  const results = nihData?.results;
+  if (!Array.isArray(results) || results.length === 0) return nihData;
+
+  const pmids = results.map((r) => r.pmid).filter(Boolean);
+  if (pmids.length === 0) return nihData;
+
+  try {
+    const response = await axios.get('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi', {
+      params: { db: 'pubmed', id: pmids.join(','), retmode: 'json' },
+      timeout: 15000,
+    });
+
+    const summaries = response.data?.result || {};
+    const enrichedResults = results.map((r) => {
+      const summary = summaries[String(r.pmid)];
+      if (!summary) return r;
+      return {
+        ...r,
+        title: summary.title || undefined,
+        authors: (summary.authors || []).map((a) => a.name),
+        journal: summary.source || undefined,
+        pub_date: summary.pubdate || undefined,
+      };
+    });
+
+    return { ...nihData, results: enrichedResults };
+  } catch (e) {
+    console.error('⚠️  PubMed enrichment failed (continuing with bare IDs):', e.message);
+    return nihData;
+  }
+}
+
 // ─── Step 3: Ask Claude (or Gemini fallback) to summarize results ────────────
 // When `catalogueMatch` is provided, the question matched one of the governed
 // catalogue entries (Appendix A) closely enough — the summarizer is told to
@@ -337,6 +383,12 @@ app.post('/api/search', async (req, res) => {
         error: `NIH Reporter API call failed (HTTP ${status}).`,
         details: errMsg,
       });
+    }
+
+    // NIH's publications endpoint only returns linking IDs (pmid, coreproject,
+    // applid) — no title/authors/journal. Fill those in from PubMed.
+    if (endpoint === 'publications') {
+      nihData = await enrichPublicationsWithPubMed(nihData);
     }
 
     // Check whether this question matches a governed catalogue question (Appendix A)
