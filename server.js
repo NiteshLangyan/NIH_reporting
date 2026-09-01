@@ -130,12 +130,30 @@ async function logSearch(sessionId, query, matchedCatalogueId, similarity) {
   `;
 }
 
-// ─── NIH Reporter API endpoints (clinical studies is v1 only) ────────────────
+// ─── NIH Reporter API endpoints ───────────────────────────────────────────────
+// NIH RePORTER's current public API only exposes "projects" and "publications"
+// search. There is no clinical-studies/clinical-trials endpoint — confirmed
+// directly: both /v1/clinicalstudies/search and /v2/clinicalstudies/search
+// return 404. NIH does not offer trial registry data (status, phase, NCT
+// number) through this API at all; that lives on ClinicalTrials.gov, a
+// separate service this app does not currently integrate with.
 const NIH_ENDPOINTS = {
-  projects:       'https://api.reporter.nih.gov/v2/projects/search',
-  publications:   'https://api.reporter.nih.gov/v2/publications/search',
-  clinicalstudies:'https://api.reporter.nih.gov/v1/clinicalstudies/search',
+  projects:     'https://api.reporter.nih.gov/v2/projects/search',
+  publications: 'https://api.reporter.nih.gov/v2/publications/search',
 };
+
+// Simple keyword check to catch clinical-trial-style questions before ever
+// calling Claude or NIH, so the user gets an accurate explanation instead of
+// a 404 or a query silently misrouted to grants data.
+const CLINICAL_TRIAL_KEYWORDS = [
+  'clinical trial', 'clinical study', 'clinical studies',
+  'nct number', 'nct id', 'recruiting', 'recruitment status',
+  'trial phase', 'trial status', 'clinicaltrials.gov',
+];
+function looksLikeClinicalTrialQuestion(query) {
+  const lower = query.toLowerCase();
+  return CLINICAL_TRIAL_KEYWORDS.some((kw) => lower.includes(kw));
+}
 
 // ─── System prompt for Step 1: interpret user query → structured API call ────
 // Field names verified directly against api.reporter.nih.gov (V2) — "search_id"
@@ -150,13 +168,12 @@ Your job is to convert a user's natural language request into a valid JSON API c
 
 Today's date is ${today}. Compute any relative time window ("past 30 days", "this quarter", "within six months", "expiring next year") into concrete "from_date"/"to_date" values (YYYY-MM-DD) based on this date. Never omit the date filter just because the window is relative — resolve it yourself.
 
-The NIH RePORTER API has three main search endpoints:
+The NIH RePORTER API has two search endpoints (there is no clinical-trials/clinical-studies endpoint — do not invent one):
 1. POST /v2/projects/search   — funded research projects
 2. POST /v2/publications/search — publications from NIH-funded research
-3. POST /v2/clinicalstudies/search — clinical studies
 
 You must return a JSON object with exactly two keys:
-- "endpoint": one of "projects", "publications", or "clinicalstudies"
+- "endpoint": one of "projects" or "publications"
 - "payload": the full POST body for that endpoint
 
 === PROJECTS /v2/projects/search payload structure ===
@@ -192,16 +209,6 @@ You must return a JSON object with exactly two keys:
     "fiscal_years": [2022, 2023],
     "pi_names": [{"first_name":"Jane","last_name":"Doe"}],
     "org_names": ["MIT"]
-  },
-  "offset": 0,
-  "limit": 10
-}
-
-=== CLINICAL STUDIES /v2/clinicalstudies/search payload structure ===
-{
-  "criteria": {
-    "fiscal_years": [2022, 2023],
-    "org_names": ["Stanford University"]
   },
   "offset": 0,
   "limit": 10
@@ -356,6 +363,20 @@ app.post('/api/search', async (req, res) => {
     return res.status(400).json({ error: 'Query is required.' });
   }
 
+  // NIH RePORTER has no clinical-trials/clinical-studies endpoint (confirmed:
+  // both v1 and v2 of that path 404). Catch this before calling Claude or NIH
+  // so the user gets an accurate explanation instead of a 404.
+  if (looksLikeClinicalTrialQuestion(query)) {
+    return res.status(200).json({
+      summary: "NIH RePORTER's public API doesn't provide clinical trial data (recruitment status, trial phase, NCT numbers, etc.) — it only covers funded research projects and their publications. For clinical trial information, try [ClinicalTrials.gov](https://clinicaltrials.gov) directly. If you're looking for the NIH-funded *research project* behind a trial, try rephrasing your question around the project, PI, or institution instead.",
+      endpoint: null,
+      query_sent: null,
+      total_count: 0,
+      raw_results: null,
+      catalogue_match: null,
+    });
+  }
+
   try {
     // Step 1: Claude builds the structured query
     let nihQuery;
@@ -369,7 +390,7 @@ app.post('/api/search', async (req, res) => {
 
     const { endpoint, payload } = nihQuery;
 
-    if (!['projects', 'publications', 'clinicalstudies'].includes(endpoint)) {
+    if (!['projects', 'publications'].includes(endpoint)) {
       return res.status(500).json({ error: `Unexpected endpoint returned: ${endpoint}` });
     }
 
