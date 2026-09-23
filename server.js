@@ -9,6 +9,7 @@ const path = require('path');
 
 const { sql, ensureInitialized, getSettingValue } = require('./db');
 const { matchQuery } = require('./catalogue');
+const { matchAgainstServices } = require('./aapharmasyn-match');
 const adminRouter = require('./admin-routes');
 
 const app = express();
@@ -308,6 +309,39 @@ async function enrichPublicationsWithPubMed(nihData) {
   }
 }
 
+// ─── Step 2c: Score each result against AAPharmaSyn's own service catalogue ──
+// For every NIH project/publication returned, embed its title (+ abstract,
+// for projects) and compare against AAPharmaSyn's service descriptions
+// (aapharmasyn_data.json) to surface a BD fit score and the matching service
+// line — the actual point of this tool. Sorts results by that score so the
+// strongest business-development opportunities surface first. Best-effort:
+// a per-result match failure just leaves that result unscored rather than
+// failing the whole search.
+async function scoreResultsAgainstAAPharmaSyn(nihData, endpoint) {
+  const results = nihData?.results;
+  if (!Array.isArray(results) || results.length === 0) return nihData;
+
+  const scored = await Promise.all(
+    results.map(async (r) => {
+      const text =
+        endpoint === 'projects'
+          ? [r.project_title, r.abstract_text].filter(Boolean).join('\n\n')
+          : [r.title, r.pub_title].filter(Boolean).join('\n\n');
+      try {
+        const match = await matchAgainstServices(text);
+        return { ...r, aapharmasyn_match: match };
+      } catch (e) {
+        console.error('⚠️  AAPharmaSyn match failed for one result (continuing):', e.message);
+        return { ...r, aapharmasyn_match: null };
+      }
+    })
+  );
+
+  scored.sort((a, b) => (b.aapharmasyn_match?.score ?? -1) - (a.aapharmasyn_match?.score ?? -1));
+
+  return { ...nihData, results: scored };
+}
+
 // ─── Step 3: Ask Claude (or Gemini fallback) to summarize results ────────────
 // When `catalogueMatch` is provided, the question matched one of the governed
 // catalogue entries (Appendix A) closely enough — the summarizer is told to
@@ -412,6 +446,13 @@ app.post('/api/search', async (req, res) => {
     // applid) — no title/authors/journal. Fill those in from PubMed.
     if (endpoint === 'publications') {
       nihData = await enrichPublicationsWithPubMed(nihData);
+    }
+
+    // Score each result against AAPharmaSyn's own services and sort by fit.
+    try {
+      nihData = await scoreResultsAgainstAAPharmaSyn(nihData, endpoint);
+    } catch (e) {
+      console.error('⚠️  AAPharmaSyn scoring failed (continuing without it):', e.message);
     }
 
     // Check whether this question matches a governed catalogue question (Appendix A)

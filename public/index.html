@@ -279,6 +279,19 @@
     }
     .result-card:hover { box-shadow: 0 3px 14px rgba(0,0,0,0.08); border-color: #c0d9ef; }
 
+    /* AAPharmaSyn fit badge */
+    .fit-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 0.74rem; font-weight: 600;
+      padding: 4px 12px; border-radius: 20px;
+      margin-bottom: 10px;
+    }
+    .fit-score { font-weight: 800; font-size: 0.78rem; }
+    .fit-label { font-weight: 500; opacity: 0.85; }
+    .fit-badge.fit-high   { background: var(--green-bg);  color: var(--green); }
+    .fit-badge.fit-medium { background: var(--orange-bg); color: var(--orange); }
+    .fit-badge.fit-low    { background: #f1f2f5; color: var(--muted); }
+
     .result-card-top {
       display: flex; align-items: flex-start;
       justify-content: space-between; gap: 12px;
@@ -595,6 +608,33 @@
     return str ? str.split(' ').map(w=>w[0]).join('').toUpperCase() : '?';
   }
 
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str ?? '';
+    return div.innerHTML;
+  }
+
+  // ── AAPharmaSyn fit badge ────────────────────────────────────────────────────
+  // Every result is scored server-side against AAPharmaSyn's own service
+  // catalogue (aapharmasyn_data.json) — this is the actual point of the tool:
+  // surfacing which NIH-funded projects/publications are worth a BD pitch,
+  // and for which specific service line.
+  function fitTier(score) {
+    if (score >= 70) return { cls: 'fit-high', label: 'Strong fit' };
+    if (score >= 40) return { cls: 'fit-medium', label: 'Possible fit' };
+    return { cls: 'fit-low', label: 'Weak fit' };
+  }
+
+  function buildFitBadge(match) {
+    if (!match || typeof match.score !== 'number') return '';
+    const tier = fitTier(match.score);
+    return `
+      <div class="fit-badge ${tier.cls}" title="Best-matching AAPharmaSyn service">
+        <span class="fit-score">${match.score}%</span>
+        <span class="fit-label">${tier.label} · ${escapeHtml(match.service)}</span>
+      </div>`;
+  }
+
   // ── Build result cards ────────────────────────────────────────────────────────
   function buildCards(nihData, endpoint) {
     const results = nihData.results || nihData.hits || [];
@@ -611,6 +651,8 @@
       const card = document.createElement('div');
       card.className = 'result-card';
 
+      const fitBadge = buildFitBadge(item.aapharmasyn_match);
+
       if (endpoint === 'projects') {
         const title = item.project_title || 'Untitled Project';
         const pis = (item.principal_investigators || [])
@@ -623,6 +665,7 @@
         const projNum = item.project_num || '';
 
         card.innerHTML = `
+          ${fitBadge}
           <div class="result-card-top">
             <div class="result-title">${title}</div>
             ${amount ? `<div class="result-amount">${fmt(amount)}</div>` : ''}
@@ -646,6 +689,7 @@
         const pmid = item.pmid || '';
 
         card.innerHTML = `
+          ${fitBadge}
           <div class="result-card-top">
             <div class="result-title">${title}</div>
           </div>
