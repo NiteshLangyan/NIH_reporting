@@ -3,49 +3,11 @@ const path = require('path');
 const { sql, ensureInitialized } = require('./db');
 const { embedText, cosineSimilarity } = require('./embeddings');
 
-// aapharmasyn_data.json is a complete, untouched mirror of llms.txt (every
-// section, including non-technical ones like Employment/Testimonials/Company
-// Timeline). For BD-fit matching we only want the sections that actually
-// describe a chemistry service — matching a NIH project's abstract against
-// "Client Testimonials" or "Company Timeline" would produce a nonsense top
-// match, so those headings are excluded here. This filtering only affects
-// which chunks are embedded for matching; aapharmasyn_data.json itself is
-// never modified.
-const EXCLUDED_HEADINGS = new Set([
-  'AAPharmaSyn', // top-level title/intro, not a service description
-  'Company Mission & Values',
-  'Vision',
-  'About AAPharmaSyn (Company Story)',
-  'Company Timeline',
-  'Explore More About AAPharmaSyn',
-  'Additional Services', // pure links to sections already included in detail elsewhere
-  'Lab Capabilities', // pure links; "Capabilities Overview Detail" covers the substance
-  'Other Services', // pure link list, no substantive content of its own
-  'Project & Program Support', // pure links
-  'Resources',
-  'Current and Legacy Clients',
-  'Client Testimonials',
-  'Employment',
-  'Personnel',
-  'Company Culture',
-  'Management Team',
-  'Operating Philosophy',
-  'Core Values',
-  'Company & Trust',
-  'Partners Detail',
-  'Example Partner Needs Addressed',
-  'Partner Logos',
-  'Resources Page Detail',
-  'Publicly Available Information',
-  'Government',
-  'Patents',
-  'Chemistry', // "Resources > Chemistry" link list, not a chemistry-capability description
-  'Useful Guides (linked resources)',
-  'White Papers Detail',
-  'White Papers List (title — publish date)',
-  'Key Pages',
-]);
-
+// aapharmasyn_data.json holds only AAPharmaSyn's service/capability sections
+// (non-technical content like Employment/Testimonials/Company Timeline is
+// filtered out, and level-3 headings are already parent-prefixed for
+// context) — generated from the full llms.txt by scripts/build-aapharmasyn-data.js.
+// Re-run that script after editing llms.txt; this module just consumes the result.
 let chunksCache = null;
 function loadChunks() {
   if (chunksCache) return chunksCache;
@@ -53,28 +15,12 @@ function loadChunks() {
   const dataPath = path.join(__dirname, 'aapharmasyn_data.json');
   const sections = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
 
-  let lastLevel2Heading = null;
-  const chunks = [];
-  for (const section of sections) {
-    if (section.level === 2) lastLevel2Heading = section.heading;
-    if (EXCLUDED_HEADINGS.has(section.heading)) continue;
-    if (!section.content || section.content.trim() === '') continue;
+  chunksCache = sections.map((section) => ({
+    heading: section.heading,
+    text: `${section.heading}\n${section.content}`,
+  }));
 
-    // A level-3 subsection's heading alone often lacks context (e.g. "Applications"
-    // appears under two different parents), so prefix it with its parent ## heading.
-    const contextualHeading =
-      section.level === 3 && lastLevel2Heading && lastLevel2Heading !== section.heading
-        ? `${lastLevel2Heading} — ${section.heading}`
-        : section.heading;
-
-    chunks.push({
-      heading: contextualHeading,
-      text: `${contextualHeading}\n${section.content}`,
-    });
-  }
-
-  chunksCache = chunks;
-  return chunks;
+  return chunksCache;
 }
 
 // Search results are matched concurrently (Promise.all over ~10 results per
