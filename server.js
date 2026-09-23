@@ -283,6 +283,8 @@ async function enrichPublicationsWithPubMed(nihData) {
   const pmids = results.map((r) => r.pmid).filter(Boolean);
   if (pmids.length === 0) return nihData;
 
+  let enrichedResults = results;
+
   try {
     const response = await axios.get('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi', {
       params: { db: 'pubmed', id: pmids.join(','), retmode: 'json' },
@@ -290,7 +292,7 @@ async function enrichPublicationsWithPubMed(nihData) {
     });
 
     const summaries = response.data?.result || {};
-    const enrichedResults = results.map((r) => {
+    enrichedResults = results.map((r) => {
       const summary = summaries[String(r.pmid)];
       if (!summary) return r;
       return {
@@ -301,12 +303,84 @@ async function enrichPublicationsWithPubMed(nihData) {
         pub_date: summary.pubdate || undefined,
       };
     });
-
-    return { ...nihData, results: enrichedResults };
   } catch (e) {
-    console.error('⚠️  PubMed enrichment failed (continuing with bare IDs):', e.message);
-    return nihData;
+    console.error('⚠️  PubMed esummary enrichment failed (continuing with bare IDs):', e.message);
   }
+
+  // esummary has no author affiliations/contact info at all. efetch's full
+  // XML record does carry each author's institutional affiliation, and for
+  // the corresponding author that affiliation string often ends with their
+  // email address — the closest thing to "who do I contact" this data
+  // source offers. This is a second, independent best-effort call: if it
+  // fails, results still carry the esummary data above with no contact detail.
+  try {
+    const affiliationsByPmid = await fetchAuthorAffiliations(pmids);
+    enrichedResults = enrichedResults.map((r) => ({
+      ...r,
+      authors_detail: affiliationsByPmid[String(r.pmid)] || null,
+    }));
+  } catch (e) {
+    console.error('⚠️  PubMed author-affiliation enrichment failed (continuing without it):', e.message);
+  }
+
+  return { ...nihData, results: enrichedResults };
+}
+
+// Fetches author name + institutional affiliation (+ email, when the
+// journal embeds one in the affiliation string) per PMID via PubMed's
+// efetch XML endpoint. Returns { [pmid]: [{name, affiliation, email}] }.
+// PubMed has no dedicated JSON API for this, and there's no XML-parsing
+// dependency in this project yet — the AuthorList structure is simple and
+// stable enough that scoped regexes over each <PubmedArticle> block are more
+// pragmatic here than adding a full XML parser for one narrow extraction.
+async function fetchAuthorAffiliations(pmids) {
+  const response = await axios.get('https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi', {
+    params: { db: 'pubmed', id: pmids.join(','), rettype: 'xml', retmode: 'xml' },
+    timeout: 15000,
+  });
+
+  const xml = response.data;
+  const byPmid = {};
+
+  const articleBlocks = xml.split('<PubmedArticle>').slice(1);
+  for (const block of articleBlocks) {
+    const pmidMatch = block.match(/<PMID[^>]*>(\d+)<\/PMID>/);
+    if (!pmidMatch) continue;
+    const pmid = pmidMatch[1];
+
+    const authors = [];
+    const authorBlocks = block.match(/<Author[^>]*>[\s\S]*?<\/Author>/g) || [];
+    for (const authorBlock of authorBlocks) {
+      const lastName = authorBlock.match(/<LastName>([^<]*)<\/LastName>/)?.[1];
+      const foreName = authorBlock.match(/<ForeName>([^<]*)<\/ForeName>/)?.[1];
+      if (!lastName) continue;
+
+      const affiliationMatch = authorBlock.match(/<Affiliation>([^<]*)<\/Affiliation>/);
+      const affiliation = affiliationMatch ? decodeXmlEntities(affiliationMatch[1]) : null;
+      const emailMatch = affiliation?.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+
+      authors.push({
+        name: [foreName, lastName].filter(Boolean).join(' '),
+        affiliation: affiliation || null,
+        email: emailMatch ? emailMatch[0].replace(/\.$/, '') : null,
+      });
+    }
+
+    if (authors.length > 0) byPmid[pmid] = authors;
+  }
+
+  return byPmid;
+}
+
+function decodeXmlEntities(str) {
+  return str
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
 }
 
 // ─── Step 2c: Score each result against AAPharmaSyn's own service catalogue ──

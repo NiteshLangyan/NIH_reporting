@@ -292,6 +292,35 @@
     .fit-badge.fit-medium { background: var(--orange-bg); color: var(--orange); }
     .fit-badge.fit-low    { background: #f1f2f5; color: var(--muted); }
 
+    /* Contact & affiliation block */
+    .contact-block {
+      margin-top: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fafcff;
+    }
+    .contact-block summary {
+      cursor: pointer; user-select: none;
+      padding: 9px 14px;
+      font-size: 0.78rem; font-weight: 600;
+      color: var(--nih-blue);
+    }
+    .contact-block summary:hover { text-decoration: underline; }
+    .contact-list {
+      padding: 4px 14px 12px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .contact-row {
+      display: flex; flex-direction: column; gap: 2px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .contact-row:first-child { border-top: none; padding-top: 0; }
+    .contact-name { font-size: 0.83rem; font-weight: 700; color: var(--text); }
+    .contact-affiliation { font-size: 0.76rem; color: var(--muted); line-height: 1.4; }
+    .contact-email { font-size: 0.78rem; color: var(--nih-blue); text-decoration: none; width: fit-content; }
+    .contact-email:hover { text-decoration: underline; }
+
     .result-card-top {
       display: flex; align-items: flex-start;
       justify-content: space-between; gap: 12px;
@@ -635,6 +664,27 @@
       </div>`;
   }
 
+  // ── Contact & affiliation block ─────────────────────────────────────────────
+  // Separate, clearly-labeled block (not folded into the meta row) listing each
+  // author's institution and, when PubMed's record happens to include one, an
+  // email — this is the "who to contact and where" info BD needs per result.
+  function buildContactBlock(authorsDetail) {
+    if (!Array.isArray(authorsDetail) || authorsDetail.length === 0) return '';
+
+    const rows = authorsDetail.map(a => `
+      <div class="contact-row">
+        <span class="contact-name">${escapeHtml(a.name)}</span>
+        ${a.affiliation ? `<span class="contact-affiliation">${escapeHtml(a.affiliation)}</span>` : ''}
+        ${a.email ? `<a class="contact-email" href="mailto:${escapeHtml(a.email)}">✉ ${escapeHtml(a.email)}</a>` : ''}
+      </div>`).join('');
+
+    return `
+      <details class="contact-block">
+        <summary>👤 Contact &amp; Affiliation (${authorsDetail.length})</summary>
+        <div class="contact-list">${rows}</div>
+      </details>`;
+  }
+
   // ── Build result cards ────────────────────────────────────────────────────────
   function buildCards(nihData, endpoint) {
     const results = nihData.results || nihData.hits || [];
@@ -700,7 +750,8 @@
           </div>
           <div class="result-tags">
             ${pmid ? `<span class="result-tag">PMID ${pmid}</span>` : ''}
-          </div>`;
+          </div>
+          ${buildContactBlock(item.authors_detail)}`;
 
       } else {
         // clinical studies
